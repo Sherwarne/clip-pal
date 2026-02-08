@@ -16,6 +16,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.net.URI;
 import java.time.format.DateTimeFormatter;
 import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.util.ArrayList;
@@ -28,6 +29,7 @@ public class App extends JFrame {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
     private final List<ClipboardItem> items = new ArrayList<>();
     private OcrService ocrService;
+    private ConfigManager configManager = new ConfigManager();
 
     public App() {
         ocrService = new OcrService();
@@ -78,7 +80,37 @@ public class App extends JFrame {
         });
 
         clearButton.addActionListener(e -> animateClear());
-        headerPanel.add(clearButton, BorderLayout.EAST);
+
+        FlatSVGIcon settingsIcon = new FlatSVGIcon("com/virtualclipboard/icons/settings.svg", 24, 24);
+        settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+        JButton settingsButton = new JButton(settingsIcon);
+        settingsButton.setToolTipText("Settings");
+        settingsButton.setOpaque(false);
+        settingsButton.setContentAreaFilled(false);
+        settingsButton.setFocusPainted(false);
+        settingsButton.setBorder(null);
+        settingsButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        settingsButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+                settingsButton.repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+                settingsButton.repaint();
+            }
+        });
+        settingsButton.addActionListener(e -> showSettingsPopup());
+
+        JPanel rightHeaderPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+        rightHeaderPanel.setOpaque(false);
+        rightHeaderPanel.add(settingsButton);
+        rightHeaderPanel.add(clearButton);
+
+        headerPanel.add(rightHeaderPanel, BorderLayout.EAST);
 
         add(headerPanel, BorderLayout.NORTH);
 
@@ -410,11 +442,23 @@ public class App extends JFrame {
             ocrPanel.setOpaque(false);
             ocrPanel.setBorder(new EmptyBorder(10, 0, 0, 0));
 
+            JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+            btnPanel.setOpaque(false);
+
             JButton scanBtn = new JButton("Scan Text (OCR)");
             scanBtn.setBackground(new Color(45, 45, 52));
             scanBtn.setForeground(Color.WHITE);
             scanBtn.setFocusPainted(false);
             scanBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
+
+            JButton searchBtn = new JButton("Visual Search");
+            searchBtn.setBackground(new Color(45, 45, 52));
+            searchBtn.setForeground(Color.WHITE);
+            searchBtn.setFocusPainted(false);
+            searchBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
+
+            btnPanel.add(scanBtn);
+            btnPanel.add(searchBtn);
 
             JTextArea resultArea = new JTextArea();
             resultArea.setEditable(false);
@@ -477,7 +521,36 @@ public class App extends JFrame {
                 }.execute();
             });
 
-            ocrPanel.add(scanBtn, BorderLayout.NORTH);
+            searchBtn.addActionListener(e -> {
+                searchBtn.setEnabled(false);
+                searchBtn.setText("Searching...");
+                new SwingWorker<String, Void>() {
+                    @Override
+                    protected String doInBackground() throws Exception {
+                        return ocrService.getSearchUrl(item.getImage());
+                    }
+
+                    @Override
+                    protected void done() {
+                        try {
+                            String url = get();
+                            if (url != null) {
+                                openBrowser(url);
+                                searchBtn.setText("Search Complete");
+                            } else {
+                                searchBtn.setText("No URL Found");
+                            }
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            searchBtn.setText("Search Failed");
+                        } finally {
+                            searchBtn.setEnabled(true);
+                        }
+                    }
+                }.execute();
+            });
+
+            ocrPanel.add(btnPanel, BorderLayout.NORTH);
             ocrPanel.add(resultScroll, BorderLayout.CENTER);
 
             imageContainer.add(ocrPanel, BorderLayout.SOUTH);
@@ -499,6 +572,52 @@ public class App extends JFrame {
         dialog.add(footer, BorderLayout.SOUTH);
 
         dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private void showSettingsPopup() {
+        JDialog dialog = new JDialog(this, "Settings", true);
+        dialog.setLayout(new BorderLayout(20, 20));
+        dialog.getContentPane().setBackground(new Color(18, 18, 20));
+
+        JPanel mainPanel = new JPanel(new GridLayout(0, 1, 15, 15));
+        mainPanel.setOpaque(false);
+        mainPanel.setBorder(new EmptyBorder(25, 25, 25, 25));
+
+        JLabel browserLabel = new JLabel("Preferred Search Browser");
+        browserLabel.setForeground(new Color(110, 110, 125));
+        browserLabel.setFont(new Font("Segoe UI Variable Small", Font.BOLD, 14));
+
+        String[] browsers = { "System Default", "Google Chrome", "Microsoft Edge", "Mozilla Firefox" };
+        JComboBox<String> browserCombo = new JComboBox<>(browsers);
+        browserCombo.setSelectedItem(configManager.getBrowser());
+
+        JCheckBox incognitoCheck = new JCheckBox("Use Incognito/Private Mode");
+        incognitoCheck.setOpaque(false);
+        incognitoCheck.setForeground(Color.WHITE);
+        incognitoCheck.setSelected(configManager.isIncognito());
+
+        mainPanel.add(browserLabel);
+        mainPanel.add(browserCombo);
+        mainPanel.add(incognitoCheck);
+
+        JButton saveBtn = new JButton("Save Preferences");
+        saveBtn.setBackground(Color.WHITE);
+        saveBtn.setForeground(new Color(18, 18, 20));
+        saveBtn.setFocusPainted(false);
+        saveBtn.addActionListener(e -> {
+            configManager.setBrowser((String) browserCombo.getSelectedItem());
+            configManager.setIncognito(incognitoCheck.isSelected());
+            configManager.save();
+            dialog.dispose();
+        });
+
+        dialog.add(mainPanel, BorderLayout.CENTER);
+        dialog.add(saveBtn, BorderLayout.SOUTH);
+
+        dialog.pack();
+        dialog.setSize(350, dialog.getHeight());
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
     }
@@ -613,6 +732,57 @@ public class App extends JFrame {
             };
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(imageTransferable, null);
             monitor.updateLastContent(image);
+        }
+    }
+
+    private void openBrowser(String url) {
+        String browser = configManager.getBrowser();
+        boolean incognito = configManager.isIncognito();
+
+        if ("System Default".equals(browser) && !incognito) {
+            try {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    Desktop.getDesktop().browse(new URI(url));
+                    return;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        // Handle specific browsers or system default with incognito
+        try {
+            List<String> command = new ArrayList<>();
+            if ("Google Chrome".equals(browser)) {
+                command.add("chrome.exe");
+                if (incognito)
+                    command.add("--incognito");
+            } else if ("Microsoft Edge".equals(browser)) {
+                command.add("msedge.exe");
+                if (incognito)
+                    command.add("-inprivate");
+            } else if ("Mozilla Firefox".equals(browser)) {
+                command.add("firefox.exe");
+                if (incognito)
+                    command.add("-private-window");
+            } else {
+                // System default fallback with incognito (trying common ones)
+                command.add("cmd");
+                command.add("/c");
+                command.add("start");
+                command.add(url); // start command doesn't easily support incognito for default browser
+                new ProcessBuilder(command).start();
+                return;
+            }
+            command.add(url);
+            new ProcessBuilder(command).start();
+        } catch (Exception e) {
+            // Fallback to default if command fails
+            try {
+                Desktop.getDesktop().browse(new URI(url));
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
