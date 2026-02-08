@@ -1,0 +1,13 @@
+target/
+dist/
+bin/
+*.class
+*.jar
+*.exe
+.project
+.classpath
+.settings/
+.idea/
+*.iml
+.DS_Store
+dependency-reduced-pom.xml

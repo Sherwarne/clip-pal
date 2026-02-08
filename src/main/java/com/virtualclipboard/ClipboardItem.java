@@ -1,0 +1,108 @@
+package com.virtualclipboard;
+
+import java.awt.image.BufferedImage;
+import java.time.LocalDateTime;
+
+public class ClipboardItem {
+    public enum Type {
+        TEXT, IMAGE
+    }
+
+    private final Type type;
+    private final String text;
+    private final BufferedImage image;
+    private final LocalDateTime timestamp;
+    private final long sizeInBytes;
+    private final int width;
+    private final int height;
+
+    public ClipboardItem(String text) {
+        this.type = Type.TEXT;
+        this.text = text;
+        this.image = null;
+        this.timestamp = LocalDateTime.now();
+        this.sizeInBytes = text.getBytes().length;
+        this.width = -1;
+        this.height = -1;
+    }
+
+    public ClipboardItem(BufferedImage image) {
+        this.type = Type.IMAGE;
+        this.image = image;
+        this.text = null;
+        this.timestamp = LocalDateTime.now();
+        this.sizeInBytes = (long) image.getWidth() * image.getHeight() * 4; // Approx size for RGBA
+        this.width = image.getWidth();
+        this.height = image.getHeight();
+    }
+
+    public Type getType() {
+        return type;
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public BufferedImage getImage() {
+        return image;
+    }
+
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
+
+    public long getSizeInBytes() {
+        return sizeInBytes;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public int getHeight() {
+        return height;
+    }
+
+    public String getFormattedSize() {
+        if (sizeInBytes < 1024)
+            return sizeInBytes + " B";
+        int exp = (int) (Math.log(sizeInBytes) / Math.log(1024));
+        String pre = ("KMGTPE").charAt(exp - 1) + "B";
+        return String.format("%.1f %s", sizeInBytes / Math.pow(1024, exp), pre);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
+        ClipboardItem that = (ClipboardItem) o;
+        if (type != that.type)
+            return false;
+        if (type == Type.TEXT) {
+            return text.equals(that.text);
+        } else {
+            // Simple check for images - compare dimensions or hash (though bufferedImage
+            // hash is object-based)
+            // For now, let's just use object equality for the monitor logic
+            return image == that.image;
+        }
+    }
+
+    public boolean contentEquals(ClipboardItem other) {
+        if (other == null)
+            return false;
+        if (this.type != other.type)
+            return false;
+        if (this.type == Type.TEXT) {
+            return this.text.equals(other.text);
+        } else {
+            // For images, we should ideally compare pixel data, but references might be
+            // tricky.
+            // In the monitor, we'll handle hash/check more carefully.
+            return false; // Default to false for images for simple deep comparison
+        }
+    }
+}

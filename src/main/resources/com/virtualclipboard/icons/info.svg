@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+
+  <!-- Use evenodd fill so inner shapes become transparent holes -->
+  <path fill="white" fill-rule="evenodd"
+        d="
+        M 50 1
+        A 49 49 0 1 1 49.9 1
+        Z
+
+        M 50 25
+        m -7 0
+        a 7 7 0 1 0 14 0
+        a 7 7 0 1 0 -14 0
+        Z
+
+        M 44 37
+        H 56
+        V 81
+        H 44
+        Z
+        " />
+
+</svg>
