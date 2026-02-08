@@ -35,9 +35,7 @@ public class App extends JFrame {
         setMinimumSize(new Dimension(500, 600));
         setLocationRelativeTo(null);
 
-        // Core Palette
         Color bgMain = new Color(18, 18, 20);
-        Color accentColor = new Color(129, 140, 248); // Soft Indigo
 
         setLayout(new BorderLayout());
         getContentPane().setBackground(bgMain);
@@ -173,19 +171,17 @@ public class App extends JFrame {
 
         AnimatedCard card = new AnimatedCard(new BorderLayout(15, 10));
         card.setPreferredSize(new Dimension(cardWidth, 160));
-        card.setBorder(BorderFactory.createCompoundBorder(
-                new LineBorder(new Color(45, 45, 52), 1, true),
-                new EmptyBorder(15, 20, 20, 20)));
+        card.setBorder(new EmptyBorder(15, 20, 20, 20));
 
         // Header Section (Time + Controls)
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
         JLabel time = new JLabel(item.getTimestamp().format(formatter));
-        time.setFont(new Font("Montserrat", Font.PLAIN, 13));
+        time.setFont(new Font("Montserrat", Font.PLAIN, 15));
         time.setForeground(new Color(110, 110, 125));
 
-        JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         controlPanel.setOpaque(false);
 
         JButton infoBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/info.svg", 16, 16));
@@ -195,6 +191,7 @@ public class App extends JFrame {
         deleteBtn.addActionListener(e -> deleteEntry(item, card));
 
         controlPanel.add(infoBtn);
+        controlPanel.add(Box.createHorizontalStrut(12));
         controlPanel.add(deleteBtn);
 
         headerPanel.add(time, BorderLayout.WEST);
@@ -218,27 +215,30 @@ public class App extends JFrame {
         } else {
             Image scaled = item.getImage().getScaledInstance(-1, 80, Image.SCALE_SMOOTH);
             preview.setIcon(new ImageIcon(scaled));
-            preview.setText(" Captured Image");
-            preview.setFont(new Font("Roboto Medium", Font.PLAIN, 18));
-            preview.setHorizontalTextPosition(JLabel.RIGHT);
         }
         contentArea.add(preview, BorderLayout.WEST);
         card.add(contentArea, BorderLayout.CENTER);
+
+        // Type Indicator (Bottom Right)
+        JLabel typeIndicator = new JLabel(item.getType() == ClipboardItem.Type.TEXT ? "T" : "I");
+        typeIndicator.setFont(new Font("Montserrat", Font.BOLD, 17));
+        typeIndicator.setForeground(new Color(110, 110, 125, 150));
+
+        JPanel footerPanel = new JPanel(new BorderLayout());
+        footerPanel.setOpaque(false);
+        footerPanel.add(typeIndicator, BorderLayout.EAST);
+        card.add(footerPanel, BorderLayout.SOUTH);
 
         // Premium Interactions
         card.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
-                card.setBorder(BorderFactory.createCompoundBorder(
-                        new LineBorder(new Color(129, 140, 248), 2, true),
-                        new EmptyBorder(14, 19, 19, 19)));
+                card.setHovered(true);
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                card.setBorder(BorderFactory.createCompoundBorder(
-                        new LineBorder(new Color(45, 45, 52), 1, true),
-                        new EmptyBorder(15, 20, 20, 20)));
+                card.setHovered(false);
             }
 
             @Override
@@ -256,7 +256,7 @@ public class App extends JFrame {
         card.cancelTimers();
 
         timeLabel.setText("✨ Copied to clipboard");
-        timeLabel.setForeground(new Color(129, 140, 248));
+        timeLabel.setForeground(Color.WHITE);
 
         final String originalTimestamp = item.getTimestamp().format(formatter);
 
@@ -267,16 +267,13 @@ public class App extends JFrame {
             if (frame[0] <= 15) {
                 float ratio = frame[0] / 15.0f;
                 card.setBorder(BorderFactory.createCompoundBorder(
-                        new LineBorder(new Color(129, 140, 248), (int) (2 + (5 * (1 - ratio))), true),
+                        new LineBorder(Color.WHITE, (int) (2 + (5 * (1 - ratio))), true),
                         new EmptyBorder(12, 19, 19, 19)));
             } else {
                 pulseTimer.stop();
                 Timer resetTimer = new Timer(1200, evt -> {
                     timeLabel.setText(originalTimestamp);
                     timeLabel.setForeground(new Color(110, 110, 125));
-                    card.setBorder(BorderFactory.createCompoundBorder(
-                            new LineBorder(new Color(129, 140, 248), 2, true),
-                            new EmptyBorder(12, 19, 19, 19)));
                 });
                 resetTimer.setRepeats(false);
                 card.setResetTimer(resetTimer);
@@ -304,7 +301,7 @@ public class App extends JFrame {
             @Override
             public void mouseEntered(MouseEvent e) {
                 if (icon instanceof FlatSVGIcon) {
-                    ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(129, 140, 248)));
+                    ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
                     btn.repaint();
                 }
             }
@@ -398,8 +395,8 @@ public class App extends JFrame {
         }
 
         JButton closeBtn = new JButton("Close");
-        closeBtn.setBackground(new Color(129, 140, 248));
-        closeBtn.setForeground(Color.WHITE);
+        closeBtn.setBackground(Color.WHITE);
+        closeBtn.setForeground(new Color(18, 18, 20));
         closeBtn.setFocusPainted(false);
         closeBtn.setBorder(new EmptyBorder(10, 20, 10, 20));
         closeBtn.addActionListener(e -> dialog.dispose());
@@ -419,6 +416,7 @@ public class App extends JFrame {
     // Custom Component for Opacity Support
     private static class AnimatedCard extends JPanel {
         private float alpha = 1.0f;
+        private boolean hovered = false;
         private Timer pulseTimer;
         private Timer resetTimer;
 
@@ -429,6 +427,11 @@ public class App extends JFrame {
 
         public void setAlpha(float alpha) {
             this.alpha = alpha;
+        }
+
+        public void setHovered(boolean hovered) {
+            this.hovered = hovered;
+            repaint();
         }
 
         public void setPulseTimer(Timer t) {
@@ -451,18 +454,34 @@ public class App extends JFrame {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            // Shading colors requested by USER
-            Color topLeft = new Color(0x29292D);
+            int w = getWidth();
+            int h = getHeight();
+
             Color body = new Color(0x222226);
+            Color topLeft = new Color(0x29292D);
             Color bottomRight = new Color(0x1C1C20);
+            Color accent = Color.WHITE;
 
-            LinearGradientPaint gradient = new LinearGradientPaint(
-                    0, 0, getWidth(), getHeight(),
-                    new float[] { 0.0f, 0.5f, 1.0f },
-                    new Color[] { topLeft, body, bottomRight });
+            // Main body
+            g2.setColor(body);
+            g2.fillRect(0, 0, w, h);
 
-            g2.setPaint(gradient);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+            if (hovered) {
+                g2.setColor(accent);
+                g2.setStroke(new BasicStroke(3));
+                g2.drawRect(1, 1, w - 3, h - 3);
+            } else {
+                // Top-left shading (three pixels thick)
+                g2.setColor(topLeft);
+                g2.fillRect(0, 0, w, 3); // Top line
+                g2.fillRect(0, 0, 3, h); // Left line
+
+                // Bottom-right shading (three pixels thick)
+                g2.setColor(bottomRight);
+                g2.fillRect(0, h - 3, w, 3); // Bottom line
+                g2.fillRect(w - 3, 0, 3, h); // Right line
+            }
+
             g2.dispose();
             super.paintComponent(g);
         }
