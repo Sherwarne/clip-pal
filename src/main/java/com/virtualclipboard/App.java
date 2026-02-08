@@ -27,8 +27,10 @@ public class App extends JFrame {
     private final ClipboardMonitor monitor;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
     private final List<ClipboardItem> items = new ArrayList<>();
+    private OcrService ocrService;
 
     public App() {
+        ocrService = new OcrService();
         setTitle("Virtual Clipboard");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(900, 750);
@@ -347,12 +349,19 @@ public class App extends JFrame {
         JPanel metaPanel = new JPanel(new GridLayout(0, 2, 10, 10));
         metaPanel.setOpaque(false);
 
-        String[][] details = {
-                { "Created", item.getTimestamp().format(formatter) },
-                { "Type", item.getType().toString() },
-                { "Size", item.getFormattedSize() },
-                { "Dimensions", (item.getWidth() > 0 ? item.getWidth() + " x " + item.getHeight() : "N/A") }
-        };
+        List<String[]> details = new ArrayList<>();
+        details.add(new String[] { "Created", item.getTimestamp().format(formatter) });
+        details.add(new String[] { "Type", item.getType().toString() });
+        details.add(new String[] { "Size", item.getFormattedSize() });
+
+        if (item.getType() == ClipboardItem.Type.TEXT) {
+            details.add(new String[] { "Characters", String.valueOf(item.getCharacterCount()) });
+            details.add(new String[] { "Words", String.valueOf(item.getWordCount()) });
+            details.add(new String[] { "Lines", String.valueOf(item.getLineCount()) });
+        } else {
+            details.add(new String[] { "Dimensions", item.getWidth() + " x " + item.getHeight() });
+            details.add(new String[] { "Aspect Ratio", item.getAspectRatio() });
+        }
 
         for (String[] detail : details) {
             JLabel key = new JLabel(detail[0]);
@@ -386,12 +395,93 @@ public class App extends JFrame {
             scroll.setBorder(new LineBorder(new Color(45, 45, 52)));
             mainPanel.add(scroll, BorderLayout.CENTER);
         } else {
+            JPanel imageContainer = new JPanel(new BorderLayout(10, 10));
+            imageContainer.setOpaque(false);
+
             JLabel imgLabel = new JLabel(new ImageIcon(item.getImage().getScaledInstance(
                     item.getWidth() > 500 ? 500 : -1,
                     -1,
                     Image.SCALE_SMOOTH)));
             imgLabel.setHorizontalAlignment(JLabel.CENTER);
-            mainPanel.add(imgLabel, BorderLayout.CENTER);
+            imageContainer.add(imgLabel, BorderLayout.CENTER);
+
+            // OCR Action Panel
+            JPanel ocrPanel = new JPanel(new BorderLayout(10, 10));
+            ocrPanel.setOpaque(false);
+            ocrPanel.setBorder(new EmptyBorder(10, 0, 0, 0));
+
+            JButton scanBtn = new JButton("Scan Text (OCR)");
+            scanBtn.setBackground(new Color(45, 45, 52));
+            scanBtn.setForeground(Color.WHITE);
+            scanBtn.setFocusPainted(false);
+            scanBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
+
+            JTextArea resultArea = new JTextArea();
+            resultArea.setEditable(false);
+            resultArea.setLineWrap(true);
+            resultArea.setWrapStyleWord(true);
+            resultArea.setBackground(new Color(28, 28, 32));
+            resultArea.setForeground(Color.WHITE);
+            resultArea.setFont(new Font("Segoe UI Variable Text", Font.PLAIN, 14));
+            resultArea.setBorder(new EmptyBorder(10, 10, 10, 10));
+            resultArea.setVisible(false);
+
+            JScrollPane resultScroll = new JScrollPane(resultArea);
+            resultScroll.setPreferredSize(new Dimension(500, 150));
+            resultScroll.setBorder(new LineBorder(new Color(45, 45, 52)));
+            resultScroll.setVisible(false);
+
+            scanBtn.addActionListener(e -> {
+                scanBtn.setEnabled(false);
+                scanBtn.setText("Scanning...");
+
+                new SwingWorker<String, Void>() {
+                    @Override
+                    protected String doInBackground() throws Exception {
+                        return ocrService.extractText(item.getImage());
+                    }
+
+                    @Override
+                    protected void done() {
+                        try {
+                            String text = get();
+                            if (text == null || text.trim().isEmpty()) {
+                                resultArea.setText("No text detected.");
+                            } else {
+                                resultArea.setText(text.trim());
+                                resultScroll.setVisible(true);
+                                resultArea.setVisible(true);
+
+                                // Add copy button for OCR result
+                                JButton copyOcrBtn = new JButton("Copy Extracted Text");
+                                copyOcrBtn.setBackground(new Color(60, 60, 70));
+                                copyOcrBtn.setForeground(Color.WHITE);
+                                copyOcrBtn.setFocusPainted(false);
+                                copyOcrBtn.setBorder(new EmptyBorder(5, 10, 5, 10));
+                                copyOcrBtn.addActionListener(copyEvt -> {
+                                    StringSelection selection = new StringSelection(text.trim());
+                                    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+                                    copyOcrBtn.setText("✓ Copied!");
+                                });
+                                ocrPanel.add(copyOcrBtn, BorderLayout.SOUTH);
+
+                                dialog.pack();
+                                dialog.setLocationRelativeTo(App.this);
+                            }
+                            scanBtn.setText("Extraction Complete");
+                        } catch (Exception ex) {
+                            resultArea.setText("OCR Error: " + ex.getMessage());
+                            resultArea.setVisible(true);
+                        }
+                    }
+                }.execute();
+            });
+
+            ocrPanel.add(scanBtn, BorderLayout.NORTH);
+            ocrPanel.add(resultScroll, BorderLayout.CENTER);
+
+            imageContainer.add(ocrPanel, BorderLayout.SOUTH);
+            mainPanel.add(imageContainer, BorderLayout.CENTER);
         }
 
         JButton closeBtn = new JButton("Close");
