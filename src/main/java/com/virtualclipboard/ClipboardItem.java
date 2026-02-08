@@ -72,6 +72,36 @@ public class ClipboardItem {
         return String.format("%.1f %s", sizeInBytes / Math.pow(1024, exp), pre);
     }
 
+    public int getWordCount() {
+        if (type != Type.TEXT || text == null || text.isBlank())
+            return 0;
+        return text.trim().split("\\s+").length;
+    }
+
+    public int getLineCount() {
+        if (type != Type.TEXT || text == null || text.isEmpty())
+            return 0;
+        return (int) text.lines().count();
+    }
+
+    public int getCharacterCount() {
+        if (type != Type.TEXT || text == null)
+            return 0;
+        return text.length();
+    }
+
+    public String getAspectRatio() {
+        if (type != Type.IMAGE || width <= 0 || height <= 0)
+            return "N/A";
+
+        int common = gcd(width, height);
+        return (width / common) + ":" + (height / common);
+    }
+
+    private int gcd(int a, int b) {
+        return b == 0 ? a : gcd(b, a % b);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o)
