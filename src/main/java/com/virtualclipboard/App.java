@@ -27,9 +27,32 @@ public class App extends JFrame {
     private final JScrollPane scrollPane = new JScrollPane(contentPanel);
     private final ClipboardMonitor monitor;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
-    private final List<ClipboardItem> items = new ArrayList<>();
+
+    // Tabbed Structure
+    private static class ClipboardTab {
+        String name;
+        List<ClipboardItem> items = new ArrayList<>();
+
+        public ClipboardTab(String name) {
+            this.name = name;
+        }
+    }
+
+    private final List<ClipboardTab> tabs = new ArrayList<>();
+    private int activeTabIndex = 0;
+    private JPanel tabsPanel; // UI Container for tabs
+
     private OcrService ocrService;
     private ConfigManager configManager = new ConfigManager();
+
+    // Sleek Modern Fonts
+    private static final String FONT_FAMILY = "Segoe UI Variable Display";
+    private static final String FONT_FAMILY_TEXT = "Segoe UI Variable Text";
+
+    // Helper to get font with fallback
+    private Font getAppFont(String name, int style, float size) {
+        return new Font(name, style, (int) size);
+    }
 
     public App() {
         ocrService = new OcrService();
@@ -50,9 +73,23 @@ public class App extends JFrame {
         headerPanel.setBorder(new EmptyBorder(40, 30, 20, 30));
 
         JLabel titleLabel = new JLabel("Clipboard");
-        titleLabel.setFont(new Font("Segoe UI Variable Display Semibold", Font.PLAIN, 42));
+        titleLabel.setFont(getAppFont(FONT_FAMILY, Font.BOLD, 42)); // Use sleek font
         titleLabel.setForeground(Color.WHITE);
         headerPanel.add(titleLabel, BorderLayout.WEST);
+
+        // Tab Bar UI
+        // Tab Bar UI
+        tabsPanel = new JPanel(new GridBagLayout()); // Use GridBagLayout for dynamic sizing
+        tabsPanel.setOpaque(false);
+        tabs.add(new ClipboardTab("Main")); // Default tab
+        refreshTabsUI();
+
+        JPanel centerHeader = new JPanel(new BorderLayout());
+        centerHeader.setOpaque(false);
+        centerHeader.add(tabsPanel, BorderLayout.SOUTH);
+        centerHeader.setBorder(new EmptyBorder(0, 20, 0, 0));
+
+        headerPanel.add(centerHeader, BorderLayout.CENTER);
 
         FlatSVGIcon trashIcon = new FlatSVGIcon("com/virtualclipboard/icons/trashcan.svg", 24, 24);
         trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
@@ -79,7 +116,10 @@ public class App extends JFrame {
             }
         });
 
-        clearButton.addActionListener(e -> animateClear());
+        clearButton.addActionListener(e -> {
+            showConfirmationDialog("Clear History",
+                    "Are you sure you want to clear all history?\nThis action cannot be undone.", this::animateClear);
+        });
 
         FlatSVGIcon settingsIcon = new FlatSVGIcon("com/virtualclipboard/icons/settings.svg", 24, 24);
         settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
@@ -130,8 +170,11 @@ public class App extends JFrame {
         });
 
         monitor = new ClipboardMonitor(item -> SwingUtilities.invokeLater(() -> {
-            items.add(0, item);
-            animateNewEntry(item);
+            getCurrentTab().items.add(0, item);
+            refreshUI();
+            if (tabs.indexOf(getCurrentTab()) == activeTabIndex) {
+                animateNewEntry(item);
+            }
         }));
     }
 
@@ -155,9 +198,182 @@ public class App extends JFrame {
         timer.start();
     }
 
+    private ClipboardTab getCurrentTab() {
+        if (tabs.isEmpty())
+            tabs.add(new ClipboardTab("Main"));
+        if (activeTabIndex >= tabs.size())
+            activeTabIndex = 0;
+        return tabs.get(activeTabIndex);
+    }
+
+    private void refreshTabsUI() {
+        tabsPanel.removeAll();
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(0, 2, 0, 2);
+
+        for (int i = 0; i < tabs.size(); i++) {
+            ClipboardTab tab = tabs.get(i);
+            boolean isActive = (i == activeTabIndex);
+
+            // Tab Button
+            JButton tabBtn = new JButton(tab.name);
+            tabBtn.setFont(getAppFont(FONT_FAMILY_TEXT, isActive ? Font.BOLD : Font.PLAIN, 14));
+            tabBtn.setForeground(isActive ? Color.WHITE : new Color(110, 110, 125));
+            tabBtn.setBackground(isActive ? new Color(45, 45, 52) : new Color(0, 0, 0, 0));
+            tabBtn.setBorder(new EmptyBorder(5, 12, 5, 12));
+            tabBtn.setFocusPainted(false);
+            tabBtn.setContentAreaFilled(isActive);
+            tabBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+            int finalI = i;
+            tabBtn.addActionListener(e -> {
+                if (activeTabIndex != finalI) {
+                    activeTabIndex = finalI;
+                    refreshTabsUI();
+                    refreshUI();
+                }
+            });
+
+            // Context Menu for Tab
+            JPopupMenu tabMenu = new JPopupMenu();
+
+            JMenuItem renameItem = new JMenuItem("Rename Tab");
+            renameItem.addActionListener(e -> {
+                String newName = JOptionPane.showInputDialog(this, "Enter new tab name:", tab.name);
+                if (newName != null && !newName.trim().isEmpty()) {
+                    tab.name = newName.trim();
+                    refreshTabsUI();
+                }
+            });
+            tabMenu.add(renameItem);
+
+            if (tabs.size() > 1) {
+                JMenuItem deleteItem = new JMenuItem("Delete Tab");
+                deleteItem.addActionListener(e -> {
+                    showConfirmationDialog("Delete Tab", "Delete tab '" + tab.name + "' and its items?", () -> {
+                        tabs.remove(tab);
+                        if (activeTabIndex >= tabs.size())
+                            activeTabIndex = 0;
+                        refreshTabsUI();
+                        refreshUI();
+                    });
+                });
+                tabMenu.add(deleteItem);
+            }
+
+            tabBtn.setComponentPopupMenu(tabMenu);
+
+            // Drag and Drop Logic
+            MouseAdapter dragHandler = new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    if (!isActive) {
+                        tabBtn.setBackground(new Color(45, 45, 52, 100)); // Subtle hover
+                        tabBtn.setContentAreaFilled(true);
+                        tabBtn.repaint();
+                    }
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    if (!isActive) {
+                        tabBtn.setBackground(new Color(0, 0, 0, 0));
+                        tabBtn.setContentAreaFilled(false);
+                        tabBtn.repaint();
+                    }
+                }
+
+                // Only start drag if moved
+                public void mouseDragged(MouseEvent e) {
+                    JComponent c = (JComponent) e.getSource();
+                    TransferHandler handler = c.getTransferHandler();
+                    handler.exportAsDrag(c, e, TransferHandler.MOVE);
+                }
+            };
+            tabBtn.addMouseListener(dragHandler);
+            tabBtn.addMouseMotionListener(dragHandler);
+
+            tabBtn.setTransferHandler(new TransferHandler("text") {
+                @Override
+                public int getSourceActions(JComponent c) {
+                    return MOVE;
+                }
+
+                @Override
+                protected Transferable createTransferable(JComponent c) {
+                    return new StringSelection(String.valueOf(finalI)); // Transfer index
+                }
+
+                @Override
+                public boolean canImport(TransferSupport support) {
+                    return support.isDataFlavorSupported(DataFlavor.stringFlavor);
+                }
+
+                @Override
+                public boolean importData(TransferSupport support) {
+                    try {
+                        String data = (String) support.getTransferable().getTransferData(DataFlavor.stringFlavor);
+                        int sourceIndex = Integer.parseInt(data);
+                        int targetIndex = finalI;
+
+                        if (sourceIndex != targetIndex) {
+                            ClipboardTab draggedTab = tabs.remove(sourceIndex);
+                            tabs.add(targetIndex, draggedTab);
+
+                            // Adjust active index if needed
+                            if (activeTabIndex == sourceIndex) {
+                                activeTabIndex = targetIndex;
+                            } else if (activeTabIndex == targetIndex) {
+                                // If we dropped onto the active tab, it shifts
+                                if (sourceIndex < targetIndex)
+                                    activeTabIndex--;
+                                else
+                                    activeTabIndex++;
+                            } else {
+                                // Complex shifting logic, simpliest is to adhere to 'draggedTab' reference
+                                activeTabIndex = tabs.indexOf(getCurrentTab());
+                            }
+
+                            // Ensure valid index just in case
+                            activeTabIndex = tabs.indexOf(getCurrentTab());
+
+                            refreshTabsUI();
+                            return true;
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    return false;
+                }
+            });
+
+            tabsPanel.add(tabBtn, gbc);
+        }
+
+        if (tabs.size() < 7) { // Increased limit to 7
+            JButton addBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/plus.svg", 16, 16));
+            addBtn.setToolTipText("New Tab");
+            addBtn.addActionListener(e -> {
+                tabs.add(new ClipboardTab("Tab " + (tabs.size() + 1)));
+                activeTabIndex = tabs.size() - 1; // Switch to new tab
+                refreshTabsUI();
+                refreshUI();
+            });
+
+            gbc.weightx = 0; // Don't let add button stretch
+            tabsPanel.add(addBtn, gbc);
+        }
+
+        tabsPanel.revalidate();
+        tabsPanel.repaint();
+    }
+
     private void refreshUI() {
         contentPanel.removeAll();
-        for (ClipboardItem item : items) {
+        ClipboardTab current = getCurrentTab();
+        for (ClipboardItem item : current.items) {
             contentPanel.add(createItemCard(item));
         }
         contentPanel.revalidate();
@@ -176,7 +392,7 @@ public class App extends JFrame {
             if (alpha[0] <= 0.0f) {
                 alpha[0] = 0.0f;
                 timer.stop();
-                items.clear();
+                getCurrentTab().items.clear(); // Fix items.clear()
                 refreshUI();
             }
             for (Component c : components) {
@@ -212,7 +428,7 @@ public class App extends JFrame {
         headerPanel.setOpaque(false);
 
         JLabel time = new JLabel(item.getTimestamp().format(formatter));
-        time.setFont(new Font("Montserrat", Font.PLAIN, 15));
+        time.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14)); // Updated font
         time.setForeground(new Color(110, 110, 125));
 
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -222,10 +438,40 @@ public class App extends JFrame {
         JButton deleteBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/close.svg", 16, 16));
 
         infoBtn.addActionListener(e -> showInfoPopup(item));
-        deleteBtn.addActionListener(e -> deleteEntry(item, card));
+        deleteBtn.addActionListener(e -> {
+            showConfirmationDialog("Delete Item", "Are you sure you want to delete this item?",
+                    () -> deleteEntry(item, card));
+        });
+
+        // Move Button
+        JButton moveBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/move.svg", 16, 16));
+        moveBtn.setToolTipText("Move to another tab");
+        moveBtn.addActionListener(e -> {
+            JPopupMenu moveMenu = new JPopupMenu();
+            for (int i = 0; i < tabs.size(); i++) {
+                if (i == activeTabIndex)
+                    continue;
+                ClipboardTab targetTab = tabs.get(i);
+                JMenuItem menuItem = new JMenuItem("Move to " + targetTab.name);
+                menuItem.addActionListener(ev -> {
+                    getCurrentTab().items.remove(item);
+                    targetTab.items.add(0, item);
+                    refreshUI();
+                });
+                moveMenu.add(menuItem);
+            }
+            if (moveMenu.getComponentCount() == 0) {
+                JMenuItem empty = new JMenuItem("No other tabs");
+                empty.setEnabled(false);
+                moveMenu.add(empty);
+            }
+            moveMenu.show(moveBtn, 0, moveBtn.getHeight());
+        });
 
         controlPanel.add(infoBtn);
-        controlPanel.add(Box.createHorizontalStrut(12));
+        controlPanel.add(Box.createHorizontalStrut(8));
+        controlPanel.add(moveBtn);
+        controlPanel.add(Box.createHorizontalStrut(8));
         controlPanel.add(deleteBtn);
 
         headerPanel.add(time, BorderLayout.WEST);
@@ -238,7 +484,7 @@ public class App extends JFrame {
 
         JLabel preview = new JLabel();
         preview.setForeground(Color.WHITE);
-        preview.setFont(new Font("Roboto", Font.BOLD, 22));
+        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16)); // Updated font
 
         if (item.getType() == ClipboardItem.Type.TEXT) {
             String text = item.getText().trim();
@@ -255,7 +501,7 @@ public class App extends JFrame {
 
         // Type Indicator (Bottom Right)
         JLabel typeIndicator = new JLabel(item.getType() == ClipboardItem.Type.TEXT ? "T" : "I");
-        typeIndicator.setFont(new Font("Montserrat", Font.BOLD, 17));
+        typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, 17)); // Updated font
         typeIndicator.setForeground(new Color(110, 110, 125, 150));
 
         JPanel footerPanel = new JPanel(new BorderLayout());
@@ -320,6 +566,52 @@ public class App extends JFrame {
         pulseTimer.start();
     }
 
+    private void showConfirmationDialog(String title, String message, Runnable onConfirm) {
+        JDialog dialog = new JDialog(this, title, true);
+        dialog.setLayout(new BorderLayout(20, 20));
+        dialog.getContentPane().setBackground(new Color(18, 18, 20)); // Match App BG
+
+        JPanel panel = new JPanel(new BorderLayout(15, 15));
+        panel.setOpaque(false);
+        panel.setBorder(new EmptyBorder(25, 25, 25, 25));
+
+        JLabel msgLabel = new JLabel(
+                "<html><div style='width:250px'>" + message.replace("\n", "<br>") + "</div></html>");
+        msgLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 15));
+        msgLabel.setForeground(Color.WHITE);
+        panel.add(msgLabel, BorderLayout.CENTER);
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        btnPanel.setOpaque(false);
+
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.setBackground(new Color(45, 45, 52));
+        cancelBtn.setForeground(Color.WHITE);
+        cancelBtn.setFocusPainted(false);
+        cancelBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
+        cancelBtn.addActionListener(e -> dialog.dispose());
+
+        JButton confirmBtn = new JButton("Confirm");
+        confirmBtn.setBackground(new Color(255, 60, 60)); // Red for destructive
+        confirmBtn.setForeground(Color.WHITE);
+        confirmBtn.setFocusPainted(false);
+        confirmBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
+        confirmBtn.addActionListener(e -> {
+            dialog.dispose();
+            onConfirm.run();
+        });
+
+        btnPanel.add(cancelBtn);
+        btnPanel.add(confirmBtn);
+
+        panel.add(btnPanel, BorderLayout.SOUTH);
+        dialog.add(panel);
+
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
     private JButton createSubtleButton(Icon icon) {
         JButton btn = new JButton(icon);
         if (icon instanceof FlatSVGIcon) {
@@ -359,7 +651,7 @@ public class App extends JFrame {
             alpha[0] -= 0.1f;
             if (alpha[0] <= 0.0f) {
                 timer.stop();
-                items.remove(item);
+                getCurrentTab().items.remove(item); // Fix items.remove()
                 refreshUI();
             }
             card.setAlpha(alpha[0]);
@@ -398,11 +690,11 @@ public class App extends JFrame {
         for (String[] detail : details) {
             JLabel key = new JLabel(detail[0]);
             key.setForeground(new Color(110, 110, 125));
-            key.setFont(new Font("Segoe UI Variable Small", Font.BOLD, 14));
+            key.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
 
             JLabel val = new JLabel(detail[1]);
             val.setForeground(Color.WHITE);
-            val.setFont(new Font("Segoe UI Variable Text", Font.PLAIN, 14));
+            val.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
 
             metaPanel.add(key);
             metaPanel.add(val);
@@ -418,7 +710,7 @@ public class App extends JFrame {
             textArea.setWrapStyleWord(true);
             textArea.setBackground(new Color(28, 28, 32));
             textArea.setForeground(Color.WHITE);
-            textArea.setFont(new Font("Segoe UI Variable Text", Font.PLAIN, 16));
+            textArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16));
             textArea.setCaretColor(Color.WHITE);
             textArea.setBorder(new EmptyBorder(15, 15, 15, 15));
 
@@ -466,7 +758,7 @@ public class App extends JFrame {
             resultArea.setWrapStyleWord(true);
             resultArea.setBackground(new Color(28, 28, 32));
             resultArea.setForeground(Color.WHITE);
-            resultArea.setFont(new Font("Segoe UI Variable Text", Font.PLAIN, 14));
+            resultArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
             resultArea.setBorder(new EmptyBorder(10, 10, 10, 10));
             resultArea.setVisible(false);
 
@@ -587,7 +879,7 @@ public class App extends JFrame {
 
         JLabel browserLabel = new JLabel("Preferred Search Browser");
         browserLabel.setForeground(new Color(110, 110, 125));
-        browserLabel.setFont(new Font("Segoe UI Variable Small", Font.BOLD, 14));
+        browserLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
 
         String[] browsers = { "System Default", "Google Chrome", "Microsoft Edge", "Mozilla Firefox" };
         JComboBox<String> browserCombo = new JComboBox<>(browsers);
