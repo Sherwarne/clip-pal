@@ -14,6 +14,7 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.net.URI;
@@ -815,31 +816,43 @@ public class App extends JFrame {
 
             searchBtn.addActionListener(e -> {
                 searchBtn.setEnabled(false);
-                searchBtn.setText("Searching...");
-                new SwingWorker<String, Void>() {
-                    @Override
-                    protected String doInBackground() throws Exception {
-                        return ocrService.getSearchUrl(item.getImage());
-                    }
+                searchBtn.setText("Copying Image...");
 
-                    @Override
-                    protected void done() {
-                        try {
-                            String url = get();
-                            if (url != null) {
-                                openBrowser(url);
-                                searchBtn.setText("Search Complete");
-                            } else {
-                                searchBtn.setText("No URL Found");
-                            }
-                        } catch (Exception ex) {
-                            ex.printStackTrace();
-                            searchBtn.setText("Search Failed");
-                        } finally {
+                // 1. Copy Image to Clipboard
+                copyToSystemClipboard(item);
+
+                // 2. Open Google Lens
+                openBrowser("https://lens.google.com/");
+
+                // 3. Automate Paste (Ctrl+V)
+                searchBtn.setText("Pasting...");
+                new Thread(() -> {
+                    try {
+                        // Wait for browser to focus and load (4 seconds)
+                        Thread.sleep(4000);
+
+                        Robot robot = new Robot();
+                        robot.setAutoDelay(50);
+
+                        // Press Ctrl+V
+                        robot.keyPress(KeyEvent.VK_CONTROL);
+                        robot.keyPress(KeyEvent.VK_V);
+                        robot.keyRelease(KeyEvent.VK_V);
+                        robot.keyRelease(KeyEvent.VK_CONTROL);
+
+                        SwingUtilities.invokeLater(() -> {
+                            searchBtn.setText("Visual Search");
                             searchBtn.setEnabled(true);
-                        }
+                            dialog.dispose(); // Close dialog as we're done
+                        });
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        SwingUtilities.invokeLater(() -> {
+                            searchBtn.setText("Error");
+                            searchBtn.setEnabled(true);
+                        });
                     }
-                }.execute();
+                }).start();
             });
 
             ocrPanel.add(btnPanel, BorderLayout.NORTH);
