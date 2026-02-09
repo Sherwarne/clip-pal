@@ -14,8 +14,10 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
-import java.io.IOException;
+import java.io.*;
 import java.net.URI;
 import java.time.format.DateTimeFormatter;
 import com.formdev.flatlaf.extras.FlatSVGIcon;
@@ -29,7 +31,8 @@ public class App extends JFrame {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     // Tabbed Structure
-    private static class ClipboardTab {
+    private static class ClipboardTab implements Serializable {
+        private static final long serialVersionUID = 1L;
         String name;
         List<ClipboardItem> items = new ArrayList<>();
 
@@ -37,6 +40,8 @@ public class App extends JFrame {
             this.name = name;
         }
     }
+
+    private static final String CLIPBOARD_STATE_FILE = "clipboard_state.dat";
 
     private final List<ClipboardTab> tabs = new ArrayList<>();
     private int activeTabIndex = 0;
@@ -82,6 +87,9 @@ public class App extends JFrame {
         tabsPanel = new JPanel(new GridBagLayout()); // Use GridBagLayout for dynamic sizing
         tabsPanel.setOpaque(false);
         tabs.add(new ClipboardTab("Main")); // Default tab
+
+        // Try to restore previous clipboard state (tabs and items)
+        loadClipboardState();
         refreshTabsUI();
 
         JPanel centerHeader = new JPanel(new BorderLayout());
@@ -176,6 +184,14 @@ public class App extends JFrame {
                 animateNewEntry(item);
             }
         }));
+
+        // Save clipboard state when the window is closing
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                saveClipboardState();
+            }
+        });
     }
 
     private void animateNewEntry(ClipboardItem item) {
@@ -403,6 +419,53 @@ public class App extends JFrame {
             contentPanel.repaint();
         });
         timer.start();
+    }
+
+    /**
+     * Persist the current clipboard tabs and items to disk so they can be
+     * restored on next launch.
+     */
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    private void saveClipboardState() {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(CLIPBOARD_STATE_FILE))) {
+            oos.writeObject(tabs);
+            oos.writeInt(activeTabIndex);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Restore previously saved clipboard tabs and items from disk, if available.
+     * If loading fails for any reason, the app will continue with the default tab.
+     */
+    private void loadClipboardState() {
+        File file = new File(CLIPBOARD_STATE_FILE);
+        if (!file.exists()) {
+            return;
+        }
+
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            Object loadedTabs = ois.readObject();
+            int loadedActiveIndex = ois.readInt();
+
+            if (loadedTabs instanceof List<?>) {
+                List<?> list = (List<?>) loadedTabs;
+                if (!list.isEmpty() && list.get(0) instanceof ClipboardTab) {
+                    tabs.clear();
+                    for (Object obj : list) {
+                        tabs.add((ClipboardTab) obj);
+                    }
+                    if (loadedActiveIndex >= 0 && loadedActiveIndex < tabs.size()) {
+                        activeTabIndex = loadedActiveIndex;
+                    } else {
+                        activeTabIndex = 0;
+                    }
+                }
+            }
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 
     private AnimatedCard createItemCard(ClipboardItem item) {
@@ -882,7 +945,13 @@ public class App extends JFrame {
         browserLabel.setForeground(new Color(110, 110, 125));
         browserLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
 
-        String[] browsers = { "System Default", "Google Chrome", "Microsoft Edge", "Mozilla Firefox" };
+        // Detect installed browsers
+        List<String> detectedBrowsers = BrowserDetector.detectInstalledBrowsers();
+        List<String> browserList = new ArrayList<>();
+        browserList.add("System Default");
+        browserList.addAll(detectedBrowsers);
+
+        String[] browsers = browserList.toArray(new String[0]);
         JComboBox<String> browserCombo = new JComboBox<>(browsers);
         browserCombo.setSelectedItem(configManager.getBrowser());
 
@@ -1043,6 +1112,7 @@ public class App extends JFrame {
         String browser = configManager.getBrowser();
         boolean incognito = configManager.isIncognito();
 
+        // Use system default if selected and no incognito
         if ("System Default".equals(browser) && !incognito) {
             try {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
@@ -1054,39 +1124,38 @@ public class App extends JFrame {
             }
         }
 
-        // Handle specific browsers or system default with incognito
+        // Use BrowserDetector for specific browsers
         try {
-            List<String> command = new ArrayList<>();
-            if ("Google Chrome".equals(browser)) {
-                command.add("chrome.exe");
-                if (incognito)
-                    command.add("--incognito");
-            } else if ("Microsoft Edge".equals(browser)) {
-                command.add("msedge.exe");
-                if (incognito)
-                    command.add("-inprivate");
-            } else if ("Mozilla Firefox".equals(browser)) {
-                command.add("firefox.exe");
-                if (incognito)
-                    command.add("-private-window");
-            } else {
-                // System default fallback with incognito (trying common ones)
-                command.add("cmd");
-                command.add("/c");
-                command.add("start");
-                command.add(url); // start command doesn't easily support incognito for default browser
+            String browserPath = BrowserDetector.getBrowserPath(browser);
+
+            if (browserPath != null) {
+                // Browser detected, use its path
+                List<String> command = new ArrayList<>();
+                command.add(browserPath);
+
+                // Add incognito flag if enabled
+                if (incognito) {
+                    String incognitoFlag = BrowserDetector.getIncognitoFlag(browser);
+                    if (incognitoFlag != null) {
+                        command.add(incognitoFlag);
+                    }
+                }
+
+                command.add(url);
                 new ProcessBuilder(command).start();
                 return;
             }
-            command.add(url);
-            new ProcessBuilder(command).start();
         } catch (Exception e) {
-            // Fallback to default if command fails
-            try {
+            e.printStackTrace();
+        }
+
+        // Fallback to system default
+        try {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                 Desktop.getDesktop().browse(new URI(url));
-            } catch (Exception ex) {
-                ex.printStackTrace();
             }
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
     }
 
