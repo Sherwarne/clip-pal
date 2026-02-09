@@ -57,46 +57,87 @@ public class OcrService {
         return tesseract.doOCR(image);
     }
 
-    public String getSearchUrl(BufferedImage image) throws IOException {
+    public String getSearchUrl(BufferedImage image, String engine) throws IOException {
+        // First upload image to get direct URL
+        String imageUrl = uploadImageToCatbox(image);
+
+        // Construct search URL based on engine
+        switch (engine) {
+            case "Yandex":
+                return getYandexSearchUrl(imageUrl);
+            case "Bing":
+                return getBingSearchUrl(imageUrl);
+            default:
+                return getYandexSearchUrl(imageUrl);
+        }
+    }
+
+    private String uploadImageToCatbox(BufferedImage image) throws IOException {
         String boundary = "---" + UUID.randomUUID().toString();
-        String urlString = "https://www.google.com/searchbyimage/upload";
-        URL url = new URL(urlString);
+        URL url = new URL("https://catbox.moe/user/api.php");
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setDoOutput(true);
         connection.setRequestMethod("POST");
-        connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
         connection.setRequestProperty("User-Agent",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-        try (OutputStream output = connection.getOutputStream();
-                PrintWriter writer = new PrintWriter(new OutputStreamWriter(output, "UTF-8"), true)) {
+        try (DataOutputStream output = new DataOutputStream(connection.getOutputStream());
+                ByteArrayOutputStream imageBytes = new ByteArrayOutputStream()) {
 
-            // Image data
-            writer.append("--").append(boundary).append("\r\n");
-            writer.append("Content-Disposition: form-data; name=\"encoded_image\"; filename=\"image.png\"")
-                    .append("\r\n");
-            writer.append("Content-Type: image/png").append("\r\n");
-            writer.append("\r\n").flush();
+            // Convert image to PNG
+            ImageIO.write(image, "png", imageBytes);
+            byte[] imageData = imageBytes.toByteArray();
 
-            ImageIO.write(image, "png", output);
+            // reqtype parameter
+            output.writeBytes("--" + boundary + "\r\n");
+            output.writeBytes("Content-Disposition: form-data; name=\"reqtype\"\r\n");
+            output.writeBytes("\r\n");
+            output.writeBytes("fileupload\r\n");
+
+            // fileToUpload parameter
+            output.writeBytes("--" + boundary + "\r\n");
+            output.writeBytes("Content-Disposition: form-data; name=\"fileToUpload\"; filename=\"image.png\"\r\n");
+            output.writeBytes("Content-Type: image/png\r\n");
+            output.writeBytes("\r\n");
+            output.write(imageData);
+            output.writeBytes("\r\n");
+
+            // End boundary
+            output.writeBytes("--" + boundary + "--\r\n");
             output.flush();
-            writer.append("\r\n");
-
-            // Source parameter
-            writer.append("--").append(boundary).append("\r\n");
-            writer.append("Content-Disposition: form-data; name=\"sbisrc\"").append("\r\n");
-            writer.append("\r\n");
-            writer.append("cr_1_0_0").append("\r\n");
-
-            writer.append("--").append(boundary).append("--").append("\r\n").flush();
         }
 
+        // Read response
         int responseCode = connection.getResponseCode();
-        if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP || responseCode == HttpURLConnection.HTTP_MOVED_PERM) {
-            return connection.getHeaderField("Location");
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream()))) {
+                String uploadedUrl = reader.readLine();
+                if (uploadedUrl != null && !uploadedUrl.isEmpty()) {
+                    return uploadedUrl.trim();
+                }
+            }
         }
 
-        throw new IOException("Failed to get search URL: " + responseCode);
+        throw new IOException("Failed to upload image to Catbox: " + responseCode);
+    }
+
+    private String getYandexSearchUrl(String imageUrl) throws IOException {
+        try {
+            String encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8");
+            return "https://yandex.com/images/search?rpt=imageview&url=" + encodedUrl;
+        } catch (Exception e) {
+            throw new IOException("Failed to encode URL for Yandex", e);
+        }
+    }
+
+    private String getBingSearchUrl(String imageUrl) throws IOException {
+        try {
+            String encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8");
+            return "https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:" + encodedUrl;
+        } catch (Exception e) {
+            throw new IOException("Failed to encode URL for Bing", e);
+        }
     }
 }

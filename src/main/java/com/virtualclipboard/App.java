@@ -819,7 +819,8 @@ public class App extends JFrame {
                 new SwingWorker<String, Void>() {
                     @Override
                     protected String doInBackground() throws Exception {
-                        return ocrService.getSearchUrl(item.getImage());
+                        String engine = configManager.getSearchEngine();
+                        return ocrService.getSearchUrl(item.getImage(), engine);
                     }
 
                     @Override
@@ -885,6 +886,14 @@ public class App extends JFrame {
         JComboBox<String> browserCombo = new JComboBox<>(browsers);
         browserCombo.setSelectedItem(configManager.getBrowser());
 
+        JLabel searchEngineLabel = new JLabel("Image Search Engine");
+        searchEngineLabel.setForeground(new Color(110, 110, 125));
+        searchEngineLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+
+        String[] searchEngines = { "Yandex", "Bing" };
+        JComboBox<String> searchEngineCombo = new JComboBox<>(searchEngines);
+        searchEngineCombo.setSelectedItem(configManager.getSearchEngine());
+
         JCheckBox incognitoCheck = new JCheckBox("Use Incognito/Private Mode");
         incognitoCheck.setOpaque(false);
         incognitoCheck.setForeground(Color.WHITE);
@@ -892,6 +901,8 @@ public class App extends JFrame {
 
         mainPanel.add(browserLabel);
         mainPanel.add(browserCombo);
+        mainPanel.add(searchEngineLabel);
+        mainPanel.add(searchEngineCombo);
         mainPanel.add(incognitoCheck);
 
         JButton saveBtn = new JButton("Save Preferences");
@@ -900,6 +911,7 @@ public class App extends JFrame {
         saveBtn.setFocusPainted(false);
         saveBtn.addActionListener(e -> {
             configManager.setBrowser((String) browserCombo.getSelectedItem());
+            configManager.setSearchEngine((String) searchEngineCombo.getSelectedItem());
             configManager.setIncognito(incognitoCheck.isSelected());
             configManager.save();
             dialog.dispose();

@@ -45,4 +45,12 @@ public class ConfigManager {
     public void setIncognito(boolean enabled) {
         properties.setProperty("incognito", String.valueOf(enabled));
     }
+
+    public String getSearchEngine() {
+        return properties.getProperty("searchEngine", "Yandex");
+    }
+
+    public void setSearchEngine(String engine) {
+        properties.setProperty("searchEngine", engine);
+    }
 }
