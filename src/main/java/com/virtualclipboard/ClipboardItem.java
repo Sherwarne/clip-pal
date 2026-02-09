@@ -1,9 +1,11 @@
 package com.virtualclipboard;
 
 import java.awt.image.BufferedImage;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
-public class ClipboardItem {
+public class ClipboardItem implements Serializable {
+    private static final long serialVersionUID = 1L;
     public enum Type {
         TEXT, IMAGE
     }
