@@ -91,6 +91,7 @@ public class App extends JFrame {
         // Try to restore previous clipboard state (tabs and items)
         loadClipboardState();
         refreshTabsUI();
+        refreshUI(); // Refresh UI to display loaded items
 
         JPanel centerHeader = new JPanel(new BorderLayout());
         centerHeader.setOpaque(false);
@@ -178,9 +179,14 @@ public class App extends JFrame {
         });
 
         monitor = new ClipboardMonitor(item -> SwingUtilities.invokeLater(() -> {
-            getCurrentTab().items.add(0, item);
+            ClipboardTab currentTab = getCurrentTab();
+            // Check if item already exists to prevent duplicates
+            if (!currentTab.items.isEmpty() && currentTab.items.get(0).equals(item)) {
+                return; // Item already exists, skip
+            }
+            currentTab.items.add(0, item);
             refreshUI();
-            if (tabs.indexOf(getCurrentTab()) == activeTabIndex) {
+            if (tabs.indexOf(currentTab) == activeTabIndex) {
                 animateNewEntry(item);
             }
         }));
@@ -195,23 +201,25 @@ public class App extends JFrame {
     }
 
     private void animateNewEntry(ClipboardItem item) {
-        AnimatedCard card = createItemCard(item);
-        card.setAlpha(0.0f);
-        contentPanel.add(card, 0);
-        contentPanel.revalidate();
+        // Find the card that was just created by refreshUI() (should be the first one)
+        Component[] components = contentPanel.getComponents();
+        if (components.length > 0 && components[0] instanceof AnimatedCard) {
+            AnimatedCard card = (AnimatedCard) components[0];
+            card.setAlpha(0.0f);
 
-        Timer timer = new Timer(10, null);
-        final float[] alpha = { 0.0f };
-        timer.addActionListener(e -> {
-            alpha[0] += 0.05f;
-            if (alpha[0] >= 1.0f) {
-                alpha[0] = 1.0f;
-                timer.stop();
-            }
-            card.setAlpha(alpha[0]);
-            card.repaint();
-        });
-        timer.start();
+            Timer timer = new Timer(10, null);
+            final float[] alpha = { 0.0f };
+            timer.addActionListener(e -> {
+                alpha[0] += 0.05f;
+                if (alpha[0] >= 1.0f) {
+                    alpha[0] = 1.0f;
+                    timer.stop();
+                }
+                card.setAlpha(alpha[0]);
+                card.repaint();
+            });
+            timer.start();
+        }
     }
 
     private ClipboardTab getCurrentTab() {
