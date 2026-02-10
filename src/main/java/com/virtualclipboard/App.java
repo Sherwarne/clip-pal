@@ -16,6 +16,10 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.GraphicsConfiguration;
+import java.awt.GraphicsEnvironment;
+import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URI;
@@ -50,6 +54,26 @@ public class App extends JFrame {
     private OcrService ocrService;
     private ConfigManager configManager = new ConfigManager();
 
+    // Pinned sidebar state
+    private boolean pinned = true;
+    private boolean minimized = true;
+    private static final int PINNED_BAR_HEIGHT = 40;
+    private static final int PINNED_EXPANDED_HEIGHT = 500;
+    private static final int PINNED_WIDTH = 360;
+    private boolean applyingPinnedState = false;
+    private int pinnedBarHeightDynamic = PINNED_BAR_HEIGHT;
+    private JLabel gripLabel;
+    private JPanel gripBarPanel;
+    private JPanel mainContentPanel;
+    private JButton pinButtonInHeader;
+    private JButton unpinButtonInGrip;
+
+    // Card / grid sizing
+    private static final int CARD_HEIGHT_NORMAL = 160;
+    private static final int CARD_HEIGHT_COMPACT = 130;
+    private static final int META_GAP_NORMAL = 10;
+    private static final int META_GAP_COMPACT = 6;
+
     // Sleek Modern Fonts
     private static final String FONT_FAMILY = "Segoe UI Variable Display";
     private static final String FONT_FAMILY_TEXT = "Segoe UI Variable Text";
@@ -59,13 +83,32 @@ public class App extends JFrame {
         return new Font(name, style, (int) size);
     }
 
+    // View mode helpers
+    private boolean isPinnedMinimized() {
+        return pinned && minimized;
+    }
+
+    private boolean isPinnedExpanded() {
+        return pinned && !minimized;
+    }
+
+    private boolean isCompactMode() {
+        return isPinnedExpanded();
+    }
+
     public App() {
         ocrService = new OcrService();
         setTitle("Virtual Clipboard");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(900, 750);
-        setMinimumSize(new Dimension(500, 600));
-        setLocationRelativeTo(null);
+        // Use a custom, undecorated window with in-app controls
+        setUndecorated(true);
+        if (pinned) {
+            setSize(PINNED_WIDTH, minimized ? PINNED_BAR_HEIGHT : PINNED_EXPANDED_HEIGHT);
+        } else {
+            setSize(900, 750);
+            setMinimumSize(new Dimension(500, 600));
+            setLocationRelativeTo(null);
+        }
 
         Color bgMain = new Color(18, 18, 20);
 
@@ -80,6 +123,7 @@ public class App extends JFrame {
         JLabel titleLabel = new JLabel("Clipboard");
         titleLabel.setFont(getAppFont(FONT_FAMILY, Font.BOLD, 42)); // Use sleek font
         titleLabel.setForeground(Color.WHITE);
+        titleLabel.setVisible(false); // Hide the large Clipboard title for now
         headerPanel.add(titleLabel, BorderLayout.WEST);
 
         // Tab Bar UI
@@ -154,27 +198,64 @@ public class App extends JFrame {
         });
         settingsButton.addActionListener(e -> showSettingsPopup());
 
+        // Pin button (shown when unpinned; pins to bottom sidebar)
+        pinButtonInHeader = createPinUnpinButton("Pin to sidebar", true);
+        pinButtonInHeader.addActionListener(e -> {
+            pinned = true;
+            minimized = true;
+            applyPinnedState();
+        });
+
+        // Custom window controls (minimize & close)
+        JButton minimizeButton = createWindowControlButton("_");
+        minimizeButton.setToolTipText("Minimize");
+        minimizeButton.addActionListener(e -> setState(Frame.ICONIFIED));
+
+        JButton closeButton = createWindowControlButton("X");
+        closeButton.setToolTipText("Close");
+        closeButton.addActionListener(e -> dispatchEvent(new WindowEvent(this, WindowEvent.WINDOW_CLOSING)));
+
         JPanel rightHeaderPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
         rightHeaderPanel.setOpaque(false);
+        rightHeaderPanel.add(pinButtonInHeader);
         rightHeaderPanel.add(settingsButton);
         rightHeaderPanel.add(clearButton);
+        rightHeaderPanel.add(minimizeButton);
+        rightHeaderPanel.add(closeButton);
 
         headerPanel.add(rightHeaderPanel, BorderLayout.EAST);
 
-        add(headerPanel, BorderLayout.NORTH);
+        mainContentPanel = new JPanel(new BorderLayout());
+        mainContentPanel.setOpaque(false);
+        mainContentPanel.add(headerPanel, BorderLayout.NORTH);
 
         contentPanel.setOpaque(false);
         scrollPane.setBorder(null);
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
         scrollPane.getVerticalScrollBar().setUnitIncrement(30);
-        add(scrollPane, BorderLayout.CENTER);
+        mainContentPanel.add(scrollPane, BorderLayout.CENTER);
 
-        // Adaptive resize handling
+        add(mainContentPanel, BorderLayout.CENTER);
+
+        // Grip bar (shown when pinned; click to expand/collapse, button to unpin)
+        gripBarPanel = buildGripBar(bgMain);
+        if (pinned) {
+            getContentPane().add(gripBarPanel, BorderLayout.NORTH);
+        }
+
+        // Adaptive resize / snap-to-sidebar handling
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
                 refreshUI();
+            }
+
+            @Override
+            public void componentMoved(ComponentEvent e) {
+                if (pinned && !applyingPinnedState) {
+                    applyPinnedState();
+                }
             }
         });
 
@@ -198,6 +279,138 @@ public class App extends JFrame {
                 saveClipboardState();
             }
         });
+    }
+
+    private JButton createPinUnpinButton(String tooltip, boolean isPin) {
+        FlatSVGIcon pinIcon = new FlatSVGIcon("com/virtualclipboard/icons/pin.svg", 24, 24);
+        pinIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+        JButton btn = new JButton(pinIcon);
+        btn.setToolTipText(tooltip);
+        btn.setOpaque(false);
+        btn.setContentAreaFilled(false);
+        btn.setFocusPainted(false);
+        btn.setBorder(null);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                pinIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+                btn.repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                pinIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+                btn.repaint();
+            }
+        });
+        return btn;
+    }
+
+    private JButton createWindowControlButton(String text) {
+        JButton btn = new JButton(text);
+        btn.setForeground(new Color(200, 200, 210));
+        btn.setBackground(new Color(0, 0, 0, 0));
+        btn.setBorder(null);
+        btn.setFocusPainted(false);
+        btn.setContentAreaFilled(false);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        btn.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                btn.setForeground(Color.WHITE);
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                btn.setForeground(new Color(200, 200, 210));
+            }
+        });
+        return btn;
+    }
+
+    private JPanel buildGripBar(Color bgMain) {
+        JPanel grip = new JPanel(new BorderLayout());
+        grip.setBackground(bgMain);
+
+        JPanel clickArea = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        clickArea.setBackground(bgMain);
+        clickArea.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        gripLabel = new JLabel("^^^ Click to expand ^^^");
+        gripLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 13));
+        gripLabel.setForeground(Color.WHITE);
+        Dimension labelSize = gripLabel.getPreferredSize();
+        int verticalPadding = 8;
+        pinnedBarHeightDynamic = labelSize.height + verticalPadding;
+        grip.setPreferredSize(new Dimension(PINNED_WIDTH, pinnedBarHeightDynamic));
+        clickArea.add(gripLabel);
+        MouseAdapter toggleAdapter = new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                minimized = !minimized;
+                applyPinnedState();
+            }
+        };
+        clickArea.addMouseListener(toggleAdapter);
+        gripLabel.addMouseListener(toggleAdapter);
+
+        unpinButtonInGrip = createPinUnpinButton("Unpin clipboard", false);
+        unpinButtonInGrip.addActionListener(e -> {
+            pinned = false;
+            applyPinnedState();
+        });
+
+        grip.add(clickArea, BorderLayout.CENTER);
+        grip.add(unpinButtonInGrip, BorderLayout.EAST);
+        return grip;
+    }
+
+    private void updateGripLabelForMode() {
+        if (gripLabel == null) {
+            return;
+        }
+        if (isPinnedMinimized()) {
+            gripLabel.setText("^^^ Click to expand ^^^");
+        } else {
+            gripLabel.setText("");
+        }
+    }
+
+    private void applyPinnedState() {
+        applyingPinnedState = true;
+        try {
+            if (pinned) {
+                setResizable(false);
+                if (gripBarPanel.getParent() == null) {
+                    getContentPane().add(gripBarPanel, BorderLayout.NORTH);
+                }
+                gripBarPanel.setVisible(true);
+
+                GraphicsConfiguration gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
+                        .getDefaultScreenDevice().getDefaultConfiguration();
+                Rectangle bounds = gc.getBounds();
+                Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(gc);
+                int w = PINNED_WIDTH;
+                int h = isPinnedMinimized() ? pinnedBarHeightDynamic : PINNED_EXPANDED_HEIGHT;
+                int x = bounds.x;
+                int y = bounds.y + bounds.height - insets.bottom - h;
+                setBounds(x, y, w, h);
+            } else {
+                getContentPane().remove(gripBarPanel);
+                gripBarPanel.setVisible(false);
+                setResizable(true);
+                setMinimumSize(new Dimension(500, 600));
+                setSize(900, 750);
+                setLocationRelativeTo(null);
+            }
+            updateGripLabelForMode();
+            refreshUI();
+            getContentPane().revalidate();
+            getContentPane().repaint();
+        } finally {
+            applyingPinnedState = false;
+        }
     }
 
     private void animateNewEntry(ClipboardItem item) {
@@ -396,6 +609,14 @@ public class App extends JFrame {
 
     private void refreshUI() {
         contentPanel.removeAll();
+
+        // In pinned + minimized mode, show no clipboard items at all.
+        if (isPinnedMinimized()) {
+            contentPanel.revalidate();
+            contentPanel.repaint();
+            return;
+        }
+
         ClipboardTab current = getCurrentTab();
         for (ClipboardItem item : current.items) {
             contentPanel.add(createItemCard(item));
@@ -490,16 +711,22 @@ public class App extends JFrame {
             cardWidth = windowWidth - 60;
         }
 
+        int cardHeight = isCompactMode() ? CARD_HEIGHT_COMPACT : CARD_HEIGHT_NORMAL;
+        int top = isCompactMode() ? 12 : 15;
+        int leftRight = isCompactMode() ? 16 : 20;
+        int bottom = isCompactMode() ? 16 : 20;
+
         AnimatedCard card = new AnimatedCard(new BorderLayout(15, 10));
-        card.setPreferredSize(new Dimension(cardWidth, 160));
-        card.setBorder(new EmptyBorder(15, 20, 20, 20));
+        card.setPreferredSize(new Dimension(cardWidth, cardHeight));
+        card.setBorder(new EmptyBorder(top, leftRight, bottom, leftRight));
 
         // Header Section (Time + Controls)
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
 
         JLabel time = new JLabel(item.getTimestamp().format(formatter));
-        time.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14)); // Updated font
+        int timeFontSize = isCompactMode() ? 12 : 14;
+        time.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, timeFontSize));
         time.setForeground(new Color(110, 110, 125));
 
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -555,7 +782,8 @@ public class App extends JFrame {
 
         JLabel preview = new JLabel();
         preview.setForeground(Color.WHITE);
-        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16)); // Updated font
+        int previewFontSize = isCompactMode() ? 14 : 16;
+        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, previewFontSize));
 
         if (item.getType() == ClipboardItem.Type.TEXT) {
             String text = item.getText().trim();
@@ -572,7 +800,8 @@ public class App extends JFrame {
 
         // Type Indicator (Bottom Right)
         JLabel typeIndicator = new JLabel(item.getType() == ClipboardItem.Type.TEXT ? "T" : "I");
-        typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, 17)); // Updated font
+        int typeFontSize = isCompactMode() ? 15 : 17;
+        typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, typeFontSize));
         typeIndicator.setForeground(new Color(110, 110, 125, 150));
 
         JPanel footerPanel = new JPanel(new BorderLayout());
@@ -741,7 +970,7 @@ public class App extends JFrame {
         mainPanel.setBorder(new EmptyBorder(25, 25, 25, 25));
 
         // Metadata Panel
-        JPanel metaPanel = new JPanel(new GridLayout(0, 2, 10, 10));
+        JPanel metaPanel = new JPanel(createMetaGridLayout());
         metaPanel.setOpaque(false);
 
         List<String[]> details = new ArrayList<>();
@@ -938,6 +1167,11 @@ public class App extends JFrame {
         dialog.pack();
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
+    }
+
+    private GridLayout createMetaGridLayout() {
+        int gap = isCompactMode() ? META_GAP_COMPACT : META_GAP_NORMAL;
+        return new GridLayout(0, 2, gap, gap);
     }
 
     private void showSettingsPopup() {
@@ -1170,6 +1404,7 @@ public class App extends JFrame {
     public void start() {
         monitor.start();
         setVisible(true);
+        applyPinnedState();
     }
 
     public static void main(String[] args) {
