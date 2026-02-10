@@ -1168,6 +1168,39 @@ public class App extends JFrame {
     }
 
     public void start() {
+        // Prevent loading the current system clipboard as a new item on startup
+        try {
+            java.awt.datatransfer.Clipboard sysClip = Toolkit.getDefaultToolkit().getSystemClipboard();
+            Transferable contents = sysClip.getContents(null);
+            if (contents != null) {
+                if (contents.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                    try {
+                        String text = (String) contents.getTransferData(DataFlavor.stringFlavor);
+                        monitor.updateLastContent(text);
+                    } catch (Exception ignored) {
+                    }
+                } else if (contents.isDataFlavorSupported(DataFlavor.imageFlavor)) {
+                    try {
+                        Image img = (Image) contents.getTransferData(DataFlavor.imageFlavor);
+                        if (img instanceof BufferedImage) {
+                            monitor.updateLastContent((BufferedImage) img);
+                        } else if (img != null) {
+                            // Convert Image to BufferedImage if necessary
+                            BufferedImage bImg = new BufferedImage(img.getWidth(null), img.getHeight(null),
+                                    BufferedImage.TYPE_INT_ARGB);
+                            Graphics g = bImg.getGraphics();
+                            g.drawImage(img, 0, 0, null);
+                            g.dispose();
+                            monitor.updateLastContent(bImg);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Ignore startup clipboard errors
+        }
+
         monitor.start();
         setVisible(true);
     }
