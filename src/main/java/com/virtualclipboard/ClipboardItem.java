@@ -1,6 +1,10 @@
 package com.virtualclipboard;
 
+import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
@@ -12,11 +16,25 @@ public class ClipboardItem implements Serializable {
 
     private final Type type;
     private final String text;
-    private final BufferedImage image;
+    private transient BufferedImage image;
     private final LocalDateTime timestamp;
     private final long sizeInBytes;
     private final int width;
     private final int height;
+
+    private void writeObject(ObjectOutputStream out) throws IOException {
+        out.defaultWriteObject();
+        if (type == Type.IMAGE && image != null) {
+            ImageIO.write(image, "png", out);
+        }
+    }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        if (type == Type.IMAGE) {
+            image = ImageIO.read(in);
+        }
+    }
 
     public ClipboardItem(String text) {
         this.type = Type.TEXT;

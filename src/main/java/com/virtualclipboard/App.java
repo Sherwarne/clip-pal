@@ -186,6 +186,7 @@ public class App extends JFrame {
             }
             currentTab.items.add(0, item);
             refreshUI();
+            saveClipboardState(); // Save state immediately when new item is added
             if (tabs.indexOf(currentTab) == activeTabIndex) {
                 animateNewEntry(item);
             }
