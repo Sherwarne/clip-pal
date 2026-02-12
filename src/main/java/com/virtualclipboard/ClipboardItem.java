@@ -122,6 +122,30 @@ public class ClipboardItem implements Serializable {
         return b == 0 ? a : gcd(b, a % b);
     }
 
+    public int getRows() {
+        if (type == Type.TEXT) {
+            if (getCharacterCount() > 500 || getLineCount() > 10) return 2;
+            return 1;
+        } else {
+            double ar = (double) width / height;
+            if (ar < 0.5) return 2; // Portrait (updated threshold)
+            if (width > 800 && height > 600) return 2; // Large
+            return 1;
+        }
+    }
+
+    public int getCols() {
+        if (type == Type.TEXT) {
+            if (getCharacterCount() > 150 || getLineCount() > 4) return 2;
+            return 1;
+        } else {
+            double ar = (double) width / height;
+            if (ar > 4.0) return 2; // Panoramic (updated threshold)
+            if (width > 800 && height > 600) return 2; // Large
+            return 1;
+        }
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o)

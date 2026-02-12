@@ -27,7 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class App extends JFrame {
-    private final JPanel contentPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 15, 15));
+    private final JPanel contentPanel = new JPanel(new GridBagLayout());
     private final JScrollPane scrollPane = new JScrollPane(contentPanel);
     private final ClipboardMonitor monitor;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -49,6 +49,7 @@ public class App extends JFrame {
     private int activeTabIndex = 0;
     private JPanel tabsPanel; // UI Container for tabs
     private JTextField searchField;
+    private JComboBox<String> searchScopeCombo;
     private String searchQuery = "";
 
     private OcrService ocrService;
@@ -57,6 +58,7 @@ public class App extends JFrame {
     // Sleek Modern Fonts
     private static final String FONT_FAMILY = "Segoe UI Variable Display";
     private static final String FONT_FAMILY_TEXT = "Segoe UI Variable Text";
+    private static final String FONT_FAMILY_TITLE = "Segoe UI Variable Display Semibold";
 
     // Helper to get font with fallback
     private Font getAppFont(String name, int style, float size) {
@@ -114,7 +116,9 @@ public class App extends JFrame {
         searchField.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
 
         // Add a placeholder-like behavior or just a label
-        JLabel searchIconLabel = new JLabel(new FlatSVGIcon("com/virtualclipboard/icons/search.svg", 16, 16));
+        FlatSVGIcon searchIcon = new FlatSVGIcon("com/virtualclipboard/icons/search.svg", 16, 16);
+        searchIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+        JLabel searchIconLabel = new JLabel(searchIcon);
         searchIconLabel.setBorder(new EmptyBorder(0, 0, 0, 10));
 
         searchField.addKeyListener(new KeyAdapter() {
@@ -125,10 +129,15 @@ public class App extends JFrame {
             }
         });
 
+        searchScopeCombo = new JComboBox<>(new String[] { "Current Tab", "All Tabs" });
+        searchScopeCombo.setPreferredSize(new Dimension(120, 35));
+        searchScopeCombo.addActionListener(e -> refreshUI());
+
         JPanel searchWrapper = new JPanel(new BorderLayout());
         searchWrapper.setOpaque(false);
         searchWrapper.add(searchIconLabel, BorderLayout.WEST);
         searchWrapper.add(searchField, BorderLayout.CENTER);
+        searchWrapper.add(searchScopeCombo, BorderLayout.EAST);
         searchPanel.add(searchWrapper, BorderLayout.CENTER);
 
         // Tab Bar UI
@@ -454,20 +463,87 @@ public class App extends JFrame {
 
     private void refreshUI() {
         contentPanel.removeAll();
-        ClipboardTab current = getCurrentTab();
-        for (ClipboardItem item : current.items) {
-            if (!searchQuery.isEmpty()) {
-                if (item.getType() == ClipboardItem.Type.TEXT) {
-                    if (!item.getText().toLowerCase().contains(searchQuery)) {
-                        continue;
-                    }
-                } else {
-                    // Skip images for now when searching text, or we could search by timestamp/metadata
-                    continue;
+        contentPanel.setLayout(new GridBagLayout());
+        
+        boolean searchAll = searchScopeCombo != null && "All Tabs".equals(searchScopeCombo.getSelectedItem());
+        List<ClipboardTab> searchList = searchAll ? tabs : List.of(getCurrentTab());
+
+        int windowWidth = getWidth();
+        int cols;
+        if (windowWidth > 1300) cols = 4;
+        else if (windowWidth > 900) cols = 3;
+        else if (windowWidth > 600) cols = 2;
+        else cols = 1;
+
+        // Simple Masonry Grid Tracker
+        boolean[][] occupied = new boolean[1000][cols]; // rows x cols
+        int currentMaxRow = 0;
+
+        for (ClipboardTab tab : searchList) {
+            for (ClipboardItem item : tab.items) {
+                if (!searchQuery.isEmpty()) {
+                    if (item.getType() == ClipboardItem.Type.TEXT) {
+                        if (!item.getText().toLowerCase().contains(searchQuery)) continue;
+                    } else continue;
                 }
+
+                int itemRows = item.getRows();
+                int itemCols = Math.min(item.getCols(), cols); // Don't exceed available columns
+
+                // Find first available slot
+                int gridX = 0, gridY = 0;
+                boolean found = false;
+                for (int y = 0; y < 1000 && !found; y++) {
+                    for (int x = 0; x <= cols - itemCols; x++) {
+                        boolean canFit = true;
+                        for (int dy = 0; dy < itemRows; dy++) {
+                            for (int dx = 0; dx < itemCols; dx++) {
+                                if (occupied[y + dy][x + dx]) {
+                                    canFit = false;
+                                    break;
+                                }
+                            }
+                            if (!canFit) break;
+                        }
+
+                        if (canFit) {
+                            gridX = x;
+                            gridY = y;
+                            // Mark occupied
+                            for (int dy = 0; dy < itemRows; dy++) {
+                                for (int dx = 0; dx < itemCols; dx++) {
+                                    occupied[y + dy][x + dx] = true;
+                                }
+                            }
+                            currentMaxRow = Math.max(currentMaxRow, y + itemRows);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                GridBagConstraints gbc = new GridBagConstraints();
+                gbc.gridx = gridX;
+                gbc.gridy = gridY;
+                gbc.gridwidth = itemCols;
+                gbc.gridheight = itemRows;
+                gbc.fill = GridBagConstraints.BOTH;
+                gbc.insets = new Insets(10, 10, 10, 10);
+                gbc.weightx = 1.0;
+                gbc.weighty = 0.0; // Don't stretch vertically unless needed
+
+                contentPanel.add(createItemCard(item), gbc);
             }
-            contentPanel.add(createItemCard(item));
         }
+
+        // Add a filler at the bottom to keep items at the top
+        GridBagConstraints fillerGbc = new GridBagConstraints();
+        fillerGbc.gridx = 0;
+        fillerGbc.gridy = currentMaxRow;
+        fillerGbc.gridwidth = cols;
+        fillerGbc.weighty = 1.0;
+        contentPanel.add(Box.createVerticalGlue(), fillerGbc);
+
         contentPanel.revalidate();
         contentPanel.repaint();
     }
@@ -546,20 +622,30 @@ public class App extends JFrame {
 
     private AnimatedCard createItemCard(ClipboardItem item) {
         int windowWidth = getWidth();
-        int cardWidth;
+        int windowHeight = getHeight();
+        
+        // Base dimensions relative to 1920x1080 reference
+        double widthScale = (double) windowWidth / 1920.0;
+        double heightScale = (double) windowHeight / 1080.0;
+        
+        int cols;
+        if (windowWidth > 1300) cols = 4;
+        else if (windowWidth > 900) cols = 3;
+        else if (windowWidth > 600) cols = 2;
+        else cols = 1;
 
-        if (windowWidth > 1300) {
-            cardWidth = (windowWidth - 140) / 4;
-        } else if (windowWidth > 900) {
-            cardWidth = (windowWidth - 110) / 3;
-        } else if (windowWidth > 600) {
-            cardWidth = (windowWidth - 80) / 2;
-        } else {
-            cardWidth = windowWidth - 60;
-        }
+        int baseCardWidth = (windowWidth - (cols + 1) * 20) / cols;
+        // Increased base height by 25% (from 160 to 200) and scaled with window height
+        int baseCardHeight = (int) (200 * Math.max(0.8, heightScale)); 
+        
+        int itemCols = Math.min(item.getCols(), cols);
+        int itemRows = item.getRows();
+        
+        int cardWidth = baseCardWidth * itemCols + (itemCols - 1) * 20;
+        int cardHeight = baseCardHeight * itemRows + (itemRows - 1) * 20;
 
         AnimatedCard card = new AnimatedCard(new BorderLayout(15, 10));
-        card.setPreferredSize(new Dimension(cardWidth, 160));
+        card.setPreferredSize(new Dimension(cardWidth, cardHeight));
         card.setBorder(new EmptyBorder(15, 20, 20, 20));
 
         // Header Section (Time + Controls)
@@ -567,7 +653,7 @@ public class App extends JFrame {
         headerPanel.setOpaque(false);
 
         JLabel time = new JLabel(item.getTimestamp().format(formatter));
-        time.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14)); // Updated font
+        time.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
         time.setForeground(new Color(110, 110, 125));
 
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -623,24 +709,39 @@ public class App extends JFrame {
 
         JLabel preview = new JLabel();
         preview.setForeground(Color.WHITE);
-        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2)); // Dynamic font size
+        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
 
         if (item.getType() == ClipboardItem.Type.TEXT) {
             String text = item.getText().trim();
-            if (text.length() > 100)
-                text = text.substring(0, 97) + "...";
+            int maxChars = (itemCols * itemRows > 1) ? 500 : 100;
+            if (text.length() > maxChars)
+                text = text.substring(0, maxChars - 3) + "...";
             preview.setText("<html><body style='width: " + (cardWidth - 60) + "px'>"
                     + text.replace("<", "&lt;").replace("\n", " ") + "</body></html>");
         } else {
-            Image scaled = item.getImage().getScaledInstance(-1, 80, Image.SCALE_SMOOTH);
+            int maxImgWidth = cardWidth - 40;
+            int maxImgHeight = cardHeight - 80;
+            
+            double imgAR = (double) item.getWidth() / item.getHeight();
+            int targetWidth, targetHeight;
+            
+            if (imgAR > (double) maxImgWidth / maxImgHeight) {
+                targetWidth = maxImgWidth;
+                targetHeight = -1;
+            } else {
+                targetWidth = -1;
+                targetHeight = maxImgHeight;
+            }
+            
+            Image scaled = item.getImage().getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
             preview.setIcon(new ImageIcon(scaled));
         }
-        contentArea.add(preview, BorderLayout.WEST);
+        contentArea.add(preview, BorderLayout.CENTER);
         card.add(contentArea, BorderLayout.CENTER);
 
         // Type Indicator (Bottom Right)
         JLabel typeIndicator = new JLabel(item.getType() == ClipboardItem.Type.TEXT ? "T" : "I");
-        typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3)); // Dynamic font size
+        typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3));
         typeIndicator.setForeground(new Color(110, 110, 125, 150));
 
         JPanel footerPanel = new JPanel(new BorderLayout());
@@ -1009,72 +1110,91 @@ public class App extends JFrame {
     }
 
     private void showSettingsPopup() {
+        Color bgMain = getThemeColor("bgMain");
+        Color accent = getThemeColor("accent");
+        Color textPrimary = getThemeColor("textPrimary");
+        Color textSecondary = getThemeColor("textSecondary");
+
         JDialog dialog = new JDialog(this, "Settings", true);
         dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(new Color(18, 18, 20));
+        dialog.getContentPane().setBackground(bgMain);
 
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setOpaque(false);
-        contentPanel.setBorder(new EmptyBorder(20, 25, 20, 25));
+        contentPanel.setBorder(new EmptyBorder(30, 40, 30, 40));
 
-        // Browser Section
-        contentPanel.add(createSettingLabel("Preferred Browser"));
+        // Header
+        JLabel headerLabel = new JLabel("Preferences");
+        headerLabel.setForeground(textPrimary);
+        headerLabel.setFont(getAppFont(FONT_FAMILY_TITLE, Font.BOLD, 24));
+        headerLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        contentPanel.add(headerLabel);
+        contentPanel.add(Box.createVerticalStrut(25));
+
+        // Group 1: General Appearance
+        contentPanel.add(createSectionHeader("Appearance", accent));
+        
+        contentPanel.add(createSettingLabel("Color Palette", textSecondary));
+        String[] themes = { "Dark", "Deep Ocean", "Forest", "Sunset" };
+        JComboBox<String> themeCombo = createStyledComboBox(themes, configManager.getTheme());
+        contentPanel.add(themeCombo);
+        contentPanel.add(Box.createVerticalStrut(15));
+
+        contentPanel.add(createSettingLabel("Font Size", textSecondary));
+        Integer[] fontSizes = { 12, 14, 16, 18, 20 };
+        JComboBox<Integer> fontCombo = createStyledComboBox(fontSizes, configManager.getFontSize());
+        contentPanel.add(fontCombo);
+        contentPanel.add(Box.createVerticalStrut(30));
+
+        // Group 2: Search & Behavior
+        contentPanel.add(createSectionHeader("Search & Tools", accent));
+        
+        contentPanel.add(createSettingLabel("Preferred Browser", textSecondary));
         List<String> detectedBrowsers = BrowserDetector.detectInstalledBrowsers();
         List<String> browserList = new ArrayList<>();
         browserList.add("System Default");
         browserList.addAll(detectedBrowsers);
-        JComboBox<String> browserCombo = new JComboBox<>(browserList.toArray(new String[0]));
-        browserCombo.setSelectedItem(configManager.getBrowser());
+        JComboBox<String> browserCombo = createStyledComboBox(browserList.toArray(new String[0]), configManager.getBrowser());
         contentPanel.add(browserCombo);
         contentPanel.add(Box.createVerticalStrut(15));
 
-        // Search Engine Section
-        contentPanel.add(createSettingLabel("Image Search Engine"));
+        contentPanel.add(createSettingLabel("Image Search Engine", textSecondary));
         String[] searchEngines = { "Google", "Yandex", "Bing" };
-        JComboBox<String> searchEngineCombo = new JComboBox<>(searchEngines);
-        searchEngineCombo.setSelectedItem(configManager.getSearchEngine());
+        JComboBox<String> searchEngineCombo = createStyledComboBox(searchEngines, configManager.getSearchEngine());
         contentPanel.add(searchEngineCombo);
-        contentPanel.add(Box.createVerticalStrut(15));
+        contentPanel.add(Box.createVerticalStrut(30));
 
-        // Theme Section
-        contentPanel.add(createSettingLabel("Color Palette"));
-        String[] themes = { "Dark", "Deep Ocean", "Forest", "Sunset" };
-        JComboBox<String> themeCombo = new JComboBox<>(themes);
-        themeCombo.setSelectedItem(configManager.getTheme());
-        contentPanel.add(themeCombo);
-        contentPanel.add(Box.createVerticalStrut(15));
-
-        // Font Size Section
-        contentPanel.add(createSettingLabel("Font Size"));
-        Integer[] fontSizes = { 12, 14, 16, 18, 20 };
-        JComboBox<Integer> fontCombo = new JComboBox<>(fontSizes);
-        fontCombo.setSelectedItem(configManager.getFontSize());
-        contentPanel.add(fontCombo);
-        contentPanel.add(Box.createVerticalStrut(15));
-
-        // Max History Section
-        contentPanel.add(createSettingLabel("Max History Items"));
+        // Group 3: History
+        contentPanel.add(createSectionHeader("History", accent));
+        
+        contentPanel.add(createSettingLabel("Max History Items", textSecondary));
         Integer[] historyLimits = { 25, 50, 100, 200, 500 };
-        JComboBox<Integer> historyCombo = new JComboBox<>(historyLimits);
-        historyCombo.setSelectedItem(configManager.getMaxHistory());
+        JComboBox<Integer> historyCombo = createStyledComboBox(historyLimits, configManager.getMaxHistory());
         contentPanel.add(historyCombo);
-        contentPanel.add(Box.createVerticalStrut(20));
-
-        // Switches
-        JCheckBox incognitoCheck = createSettingCheckbox("Use Incognito Mode", configManager.isIncognito());
-        JCheckBox autoStartCheck = createSettingCheckbox("Start with Windows", configManager.isAutoStart());
-        contentPanel.add(incognitoCheck);
-        contentPanel.add(autoStartCheck);
         contentPanel.add(Box.createVerticalStrut(25));
 
+        // Switches
+        JCheckBox incognitoCheck = createSettingCheckbox("Use Incognito Mode", configManager.isIncognito(), textPrimary);
+        JCheckBox autoStartCheck = createSettingCheckbox("Start with Windows", configManager.isAutoStart(), textPrimary);
+        contentPanel.add(incognitoCheck);
+        contentPanel.add(Box.createVerticalStrut(10));
+        contentPanel.add(autoStartCheck);
+        contentPanel.add(Box.createVerticalStrut(40));
+
+        // Action Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        buttonPanel.setOpaque(false);
+        buttonPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
         JButton saveBtn = new JButton("Save & Apply");
-        saveBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        saveBtn.setBackground(Color.WHITE);
-        saveBtn.setForeground(new Color(18, 18, 20));
+        saveBtn.setBackground(accent);
+        saveBtn.setForeground(Color.WHITE);
         saveBtn.setFocusPainted(false);
         saveBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
-        saveBtn.setBorder(new EmptyBorder(10, 20, 10, 20));
+        saveBtn.setBorder(new EmptyBorder(12, 25, 12, 25));
+        saveBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        
         saveBtn.addActionListener(e -> {
             configManager.setBrowser((String) browserCombo.getSelectedItem());
             configManager.setSearchEngine((String) searchEngineCombo.getSelectedItem());
@@ -1087,7 +1207,20 @@ public class App extends JFrame {
             applySettings();
             dialog.dispose();
         });
-        contentPanel.add(saveBtn);
+
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.setBackground(new Color(45, 45, 48));
+        cancelBtn.setForeground(new Color(200, 200, 210));
+        cancelBtn.setFocusPainted(false);
+        cancelBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        cancelBtn.setBorder(new EmptyBorder(12, 25, 12, 25));
+        cancelBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        cancelBtn.addActionListener(e -> dialog.dispose());
+
+        buttonPanel.add(saveBtn);
+        buttonPanel.add(Box.createHorizontalStrut(10));
+        buttonPanel.add(cancelBtn);
+        contentPanel.add(buttonPanel);
 
         JScrollPane scrollPane = new JScrollPane(contentPanel);
         scrollPane.setBorder(null);
@@ -1096,65 +1229,84 @@ public class App extends JFrame {
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
         dialog.add(scrollPane, BorderLayout.CENTER);
+        dialog.setResizable(false);
         dialog.pack();
-        dialog.setSize(400, 600);
+        dialog.setSize(450, 780);
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
     }
 
-    private JLabel createSettingLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setForeground(new Color(110, 110, 125));
-        label.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 13));
+    private JLabel createSectionHeader(String text, Color color) {
+        JLabel label = new JLabel(text.toUpperCase());
+        label.setForeground(color);
+        label.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 12));
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        label.setBorder(new EmptyBorder(0, 0, 5, 0));
+        label.setBorder(new EmptyBorder(0, 0, 10, 0));
         return label;
     }
 
-    private JCheckBox createSettingCheckbox(String text, boolean selected) {
+    private <T> JComboBox<T> createStyledComboBox(T[] items, T selectedValue) {
+        JComboBox<T> combo = new JComboBox<>(items);
+        combo.setSelectedItem(selectedValue);
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        combo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        combo.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        return combo;
+    }
+
+    private JLabel createSettingLabel(String text, Color color) {
+        JLabel label = new JLabel(text);
+        label.setForeground(color);
+        label.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        label.setBorder(new EmptyBorder(0, 0, 8, 0));
+        return label;
+    }
+
+    private JCheckBox createSettingCheckbox(String text, boolean selected, Color color) {
         JCheckBox cb = new JCheckBox(text);
         cb.setOpaque(false);
-        cb.setForeground(Color.WHITE);
+        cb.setForeground(color);
         cb.setSelected(selected);
         cb.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
         cb.setAlignmentX(Component.LEFT_ALIGNMENT);
+        cb.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return cb;
     }
 
-    private void applySettings() {
+    private Color getThemeColor(String key) {
         String theme = configManager.getTheme();
-        Color bgMain;
-        Color cardBody;
-        Color cardTopLeft;
-        Color cardBottomRight;
-
         switch (theme) {
             case "Deep Ocean":
-                bgMain = new Color(10, 25, 40);
-                cardBody = new Color(20, 45, 70);
-                cardTopLeft = new Color(30, 65, 95);
-                cardBottomRight = new Color(15, 35, 55);
+                if ("bgMain".equals(key)) return new Color(10, 25, 40);
+                if ("accent".equals(key)) return new Color(60, 160, 255);
+                if ("textPrimary".equals(key)) return Color.WHITE;
+                if ("textSecondary".equals(key)) return new Color(150, 180, 210);
                 break;
             case "Forest":
-                bgMain = new Color(15, 30, 20);
-                cardBody = new Color(25, 50, 35);
-                cardTopLeft = new Color(35, 70, 50);
-                cardBottomRight = new Color(20, 40, 30);
+                if ("bgMain".equals(key)) return new Color(15, 30, 20);
+                if ("accent".equals(key)) return new Color(80, 200, 120);
+                if ("textPrimary".equals(key)) return new Color(230, 245, 230);
+                if ("textSecondary".equals(key)) return new Color(140, 170, 145);
                 break;
             case "Sunset":
-                bgMain = new Color(40, 20, 30);
-                cardBody = new Color(70, 35, 45);
-                cardTopLeft = new Color(95, 50, 65);
-                cardBottomRight = new Color(55, 25, 35);
+                if ("bgMain".equals(key)) return new Color(40, 20, 30);
+                if ("accent".equals(key)) return new Color(255, 100, 100);
+                if ("textPrimary".equals(key)) return new Color(255, 240, 240);
+                if ("textSecondary".equals(key)) return new Color(210, 160, 170);
                 break;
             default: // Dark
-                bgMain = new Color(18, 18, 20);
-                cardBody = new Color(0x222226);
-                cardTopLeft = new Color(0x29292D);
-                cardBottomRight = new Color(0x1C1C20);
+                if ("bgMain".equals(key)) return new Color(18, 18, 20);
+                if ("accent".equals(key)) return new Color(60, 120, 255);
+                if ("textPrimary".equals(key)) return Color.WHITE;
+                if ("textSecondary".equals(key)) return new Color(180, 180, 190);
                 break;
         }
+        return Color.WHITE;
+    }
 
+    private void applySettings() {
+        Color bgMain = getThemeColor("bgMain");
         getContentPane().setBackground(bgMain);
         refreshUI();
     }
@@ -1393,87 +1545,5 @@ public class App extends JFrame {
             App app = new App();
             app.start();
         });
-    }
-}
-
-/**
- * A FlowLayout extension that wraps components to the next line
- * Correctly calculates preferred size based on available width.
- */
-class WrapLayout extends FlowLayout {
-    public WrapLayout() {
-        super();
-    }
-
-    public WrapLayout(int align) {
-        super(align);
-    }
-
-    public WrapLayout(int align, int hgap, int vgap) {
-        super(align, hgap, vgap);
-    }
-
-    @Override
-    public Dimension preferredLayoutSize(Container target) {
-        return layoutSize(target, true);
-    }
-
-    @Override
-    public Dimension minimumLayoutSize(Container target) {
-        Dimension minimum = layoutSize(target, false);
-        minimum.width -= (getHgap() + 1);
-        return minimum;
-    }
-
-    private Dimension layoutSize(Container target, boolean preferred) {
-        synchronized (target.getTreeLock()) {
-            int targetWidth = target.getSize().width;
-            if (targetWidth == 0)
-                targetWidth = Integer.MAX_VALUE;
-
-            int hgap = getHgap();
-            int vgap = getVgap();
-            Insets insets = target.getInsets();
-            int horizontalInsetsAndGap = insets.left + insets.right + (hgap * 2);
-            int maxWidth = targetWidth - horizontalInsetsAndGap;
-
-            Dimension dim = new Dimension(0, 0);
-            int rowWidth = 0;
-            int rowHeight = 0;
-
-            int nmembers = target.getComponentCount();
-            for (int i = 0; i < nmembers; i++) {
-                Component m = target.getComponent(i);
-                if (m.isVisible()) {
-                    Dimension d = preferred ? m.getPreferredSize() : m.getMinimumSize();
-                    if (rowWidth + d.width > maxWidth) {
-                        addRow(dim, rowWidth, rowHeight);
-                        rowWidth = 0;
-                        rowHeight = 0;
-                    }
-                    if (rowWidth != 0)
-                        rowWidth += hgap;
-                    rowWidth += d.width;
-                    rowHeight = Math.max(rowHeight, d.height);
-                }
-            }
-            addRow(dim, rowWidth, rowHeight);
-            dim.width += horizontalInsetsAndGap;
-            dim.height += insets.top + insets.bottom + vgap * 2;
-
-            Container scrollPane = SwingUtilities.getAncestorOfClass(JScrollPane.class, target);
-            if (scrollPane != null && target.isValid()) {
-                dim.width -= (hgap + 1);
-            }
-
-            return dim;
-        }
-    }
-
-    private void addRow(Dimension dim, int rowWidth, int rowHeight) {
-        dim.width = Math.max(dim.width, rowWidth);
-        if (dim.height > 0)
-            dim.height += getVgap();
-        dim.height += rowHeight;
     }
 }
