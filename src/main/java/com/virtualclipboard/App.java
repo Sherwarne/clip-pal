@@ -61,7 +61,7 @@ public class App extends JFrame {
 
     public App() {
         ocrService = new OcrService();
-        setTitle("Virtual Clipboard");
+        setTitle("Clip-Pal");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(900, 750);
         setMinimumSize(new Dimension(500, 600));
@@ -77,10 +77,22 @@ public class App extends JFrame {
         headerPanel.setOpaque(false);
         headerPanel.setBorder(new EmptyBorder(40, 30, 20, 30));
 
-        JLabel titleLabel = new JLabel("Clipboard");
-        titleLabel.setFont(getAppFont(FONT_FAMILY, Font.BOLD, 42)); // Use sleek font
+        // Brand Section (Logo + Name)
+        JPanel brandPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        brandPanel.setOpaque(false);
+
+        // App Logo
+        FlatSVGIcon logoIcon = new FlatSVGIcon("com/virtualclipboard/icons/logo_new.svg", 36, 48);
+        JLabel logoLabel = new JLabel(logoIcon);
+        brandPanel.add(logoLabel);
+
+        // App Name
+        JLabel titleLabel = new JLabel("Clip-Pal");
+        titleLabel.setFont(getAppFont("Segoe UI Variable Display Semibold", Font.BOLD, 42));
         titleLabel.setForeground(Color.WHITE);
-        headerPanel.add(titleLabel, BorderLayout.WEST);
+        brandPanel.add(titleLabel);
+
+        headerPanel.add(brandPanel, BorderLayout.WEST);
 
         // Tab Bar UI
         // Tab Bar UI

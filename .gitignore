@@ -11,3 +11,9 @@ bin/
 *.iml
 .DS_Store
 dependency-reduced-pom.xml
+
+# Runtime artifacts
+tessdata/
+clipboard_state.dat
+config.properties
+
