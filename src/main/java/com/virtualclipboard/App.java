@@ -12,6 +12,8 @@ import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
@@ -46,6 +48,8 @@ public class App extends JFrame {
     private final List<ClipboardTab> tabs = new ArrayList<>();
     private int activeTabIndex = 0;
     private JPanel tabsPanel; // UI Container for tabs
+    private JTextField searchField;
+    private String searchQuery = "";
 
     private OcrService ocrService;
     private ConfigManager configManager = new ConfigManager();
@@ -94,6 +98,39 @@ public class App extends JFrame {
 
         headerPanel.add(brandPanel, BorderLayout.WEST);
 
+        // Search Section
+        JPanel searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setOpaque(false);
+        searchPanel.setBorder(new EmptyBorder(10, 20, 10, 20));
+
+        searchField = new JTextField();
+        searchField.setPreferredSize(new Dimension(200, 35));
+        searchField.setBackground(new Color(45, 45, 52));
+        searchField.setForeground(Color.WHITE);
+        searchField.setCaretColor(Color.WHITE);
+        searchField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(60, 60, 70), 1, true),
+                new EmptyBorder(5, 10, 5, 10)));
+        searchField.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+
+        // Add a placeholder-like behavior or just a label
+        JLabel searchIconLabel = new JLabel(new FlatSVGIcon("com/virtualclipboard/icons/search.svg", 16, 16));
+        searchIconLabel.setBorder(new EmptyBorder(0, 0, 0, 10));
+
+        searchField.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyReleased(KeyEvent e) {
+                searchQuery = searchField.getText().toLowerCase();
+                refreshUI();
+            }
+        });
+
+        JPanel searchWrapper = new JPanel(new BorderLayout());
+        searchWrapper.setOpaque(false);
+        searchWrapper.add(searchIconLabel, BorderLayout.WEST);
+        searchWrapper.add(searchField, BorderLayout.CENTER);
+        searchPanel.add(searchWrapper, BorderLayout.CENTER);
+
         // Tab Bar UI
         // Tab Bar UI
         tabsPanel = new JPanel(new GridBagLayout()); // Use GridBagLayout for dynamic sizing
@@ -111,6 +148,7 @@ public class App extends JFrame {
         centerHeader.setBorder(new EmptyBorder(0, 20, 0, 0));
 
         headerPanel.add(centerHeader, BorderLayout.CENTER);
+        headerPanel.add(searchPanel, BorderLayout.SOUTH);
 
         FlatSVGIcon trashIcon = new FlatSVGIcon("com/virtualclipboard/icons/trashcan.svg", 24, 24);
         trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
@@ -197,6 +235,13 @@ public class App extends JFrame {
                 return; // Item already exists, skip
             }
             currentTab.items.add(0, item);
+
+            // Enforce Max History
+            int max = configManager.getMaxHistory();
+            while (currentTab.items.size() > max) {
+                currentTab.items.remove(currentTab.items.size() - 1);
+            }
+
             refreshUI();
             saveClipboardState(); // Save state immediately when new item is added
             if (tabs.indexOf(currentTab) == activeTabIndex) {
@@ -411,6 +456,16 @@ public class App extends JFrame {
         contentPanel.removeAll();
         ClipboardTab current = getCurrentTab();
         for (ClipboardItem item : current.items) {
+            if (!searchQuery.isEmpty()) {
+                if (item.getType() == ClipboardItem.Type.TEXT) {
+                    if (!item.getText().toLowerCase().contains(searchQuery)) {
+                        continue;
+                    }
+                } else {
+                    // Skip images for now when searching text, or we could search by timestamp/metadata
+                    continue;
+                }
+            }
             contentPanel.add(createItemCard(item));
         }
         contentPanel.revalidate();
@@ -568,7 +623,7 @@ public class App extends JFrame {
 
         JLabel preview = new JLabel();
         preview.setForeground(Color.WHITE);
-        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16)); // Updated font
+        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2)); // Dynamic font size
 
         if (item.getType() == ClipboardItem.Type.TEXT) {
             String text = item.getText().trim();
@@ -585,7 +640,7 @@ public class App extends JFrame {
 
         // Type Indicator (Bottom Right)
         JLabel typeIndicator = new JLabel(item.getType() == ClipboardItem.Type.TEXT ? "T" : "I");
-        typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, 17)); // Updated font
+        typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3)); // Dynamic font size
         typeIndicator.setForeground(new Color(110, 110, 125, 150));
 
         JPanel footerPanel = new JPanel(new BorderLayout());
@@ -955,69 +1010,157 @@ public class App extends JFrame {
 
     private void showSettingsPopup() {
         JDialog dialog = new JDialog(this, "Settings", true);
-        dialog.setLayout(new BorderLayout(20, 20));
+        dialog.setLayout(new BorderLayout());
         dialog.getContentPane().setBackground(new Color(18, 18, 20));
 
-        JPanel mainPanel = new JPanel(new GridLayout(0, 1, 15, 15));
-        mainPanel.setOpaque(false);
-        mainPanel.setBorder(new EmptyBorder(25, 25, 25, 25));
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setOpaque(false);
+        contentPanel.setBorder(new EmptyBorder(20, 25, 20, 25));
 
-        JLabel browserLabel = new JLabel("Preferred Search Browser");
-        browserLabel.setForeground(new Color(110, 110, 125));
-        browserLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
-
-        // Detect installed browsers
+        // Browser Section
+        contentPanel.add(createSettingLabel("Preferred Browser"));
         List<String> detectedBrowsers = BrowserDetector.detectInstalledBrowsers();
         List<String> browserList = new ArrayList<>();
         browserList.add("System Default");
         browserList.addAll(detectedBrowsers);
-
-        String[] browsers = browserList.toArray(new String[0]);
-        JComboBox<String> browserCombo = new JComboBox<>(browsers);
+        JComboBox<String> browserCombo = new JComboBox<>(browserList.toArray(new String[0]));
         browserCombo.setSelectedItem(configManager.getBrowser());
+        contentPanel.add(browserCombo);
+        contentPanel.add(Box.createVerticalStrut(15));
 
-        JLabel searchEngineLabel = new JLabel("Image Search Engine");
-        searchEngineLabel.setForeground(new Color(110, 110, 125));
-        searchEngineLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
-
-        String[] searchEngines = { "Yandex", "Bing" };
+        // Search Engine Section
+        contentPanel.add(createSettingLabel("Image Search Engine"));
+        String[] searchEngines = { "Google", "Yandex", "Bing" };
         JComboBox<String> searchEngineCombo = new JComboBox<>(searchEngines);
         searchEngineCombo.setSelectedItem(configManager.getSearchEngine());
+        contentPanel.add(searchEngineCombo);
+        contentPanel.add(Box.createVerticalStrut(15));
 
-        JCheckBox incognitoCheck = new JCheckBox("Use Incognito/Private Mode");
-        incognitoCheck.setOpaque(false);
-        incognitoCheck.setForeground(Color.WHITE);
-        incognitoCheck.setSelected(configManager.isIncognito());
+        // Theme Section
+        contentPanel.add(createSettingLabel("Color Palette"));
+        String[] themes = { "Dark", "Deep Ocean", "Forest", "Sunset" };
+        JComboBox<String> themeCombo = new JComboBox<>(themes);
+        themeCombo.setSelectedItem(configManager.getTheme());
+        contentPanel.add(themeCombo);
+        contentPanel.add(Box.createVerticalStrut(15));
 
-        mainPanel.add(browserLabel);
-        mainPanel.add(browserCombo);
-        mainPanel.add(searchEngineLabel);
-        mainPanel.add(searchEngineCombo);
-        mainPanel.add(incognitoCheck);
+        // Font Size Section
+        contentPanel.add(createSettingLabel("Font Size"));
+        Integer[] fontSizes = { 12, 14, 16, 18, 20 };
+        JComboBox<Integer> fontCombo = new JComboBox<>(fontSizes);
+        fontCombo.setSelectedItem(configManager.getFontSize());
+        contentPanel.add(fontCombo);
+        contentPanel.add(Box.createVerticalStrut(15));
 
-        JButton saveBtn = new JButton("Save Preferences");
+        // Max History Section
+        contentPanel.add(createSettingLabel("Max History Items"));
+        Integer[] historyLimits = { 25, 50, 100, 200, 500 };
+        JComboBox<Integer> historyCombo = new JComboBox<>(historyLimits);
+        historyCombo.setSelectedItem(configManager.getMaxHistory());
+        contentPanel.add(historyCombo);
+        contentPanel.add(Box.createVerticalStrut(20));
+
+        // Switches
+        JCheckBox incognitoCheck = createSettingCheckbox("Use Incognito Mode", configManager.isIncognito());
+        JCheckBox autoStartCheck = createSettingCheckbox("Start with Windows", configManager.isAutoStart());
+        contentPanel.add(incognitoCheck);
+        contentPanel.add(autoStartCheck);
+        contentPanel.add(Box.createVerticalStrut(25));
+
+        JButton saveBtn = new JButton("Save & Apply");
+        saveBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         saveBtn.setBackground(Color.WHITE);
         saveBtn.setForeground(new Color(18, 18, 20));
         saveBtn.setFocusPainted(false);
+        saveBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        saveBtn.setBorder(new EmptyBorder(10, 20, 10, 20));
         saveBtn.addActionListener(e -> {
             configManager.setBrowser((String) browserCombo.getSelectedItem());
             configManager.setSearchEngine((String) searchEngineCombo.getSelectedItem());
+            configManager.setTheme((String) themeCombo.getSelectedItem());
+            configManager.setFontSize((Integer) fontCombo.getSelectedItem());
+            configManager.setMaxHistory((Integer) historyCombo.getSelectedItem());
             configManager.setIncognito(incognitoCheck.isSelected());
+            configManager.setAutoStart(autoStartCheck.isSelected());
             configManager.save();
+            applySettings();
             dialog.dispose();
         });
+        contentPanel.add(saveBtn);
 
-        dialog.add(mainPanel, BorderLayout.CENTER);
-        dialog.add(saveBtn, BorderLayout.SOUTH);
+        JScrollPane scrollPane = new JScrollPane(contentPanel);
+        scrollPane.setBorder(null);
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
+        dialog.add(scrollPane, BorderLayout.CENTER);
         dialog.pack();
-        dialog.setSize(350, dialog.getHeight());
+        dialog.setSize(400, 600);
         dialog.setLocationRelativeTo(this);
         dialog.setVisible(true);
     }
 
+    private JLabel createSettingLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(new Color(110, 110, 125));
+        label.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 13));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        label.setBorder(new EmptyBorder(0, 0, 5, 0));
+        return label;
+    }
+
+    private JCheckBox createSettingCheckbox(String text, boolean selected) {
+        JCheckBox cb = new JCheckBox(text);
+        cb.setOpaque(false);
+        cb.setForeground(Color.WHITE);
+        cb.setSelected(selected);
+        cb.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        cb.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return cb;
+    }
+
+    private void applySettings() {
+        String theme = configManager.getTheme();
+        Color bgMain;
+        Color cardBody;
+        Color cardTopLeft;
+        Color cardBottomRight;
+
+        switch (theme) {
+            case "Deep Ocean":
+                bgMain = new Color(10, 25, 40);
+                cardBody = new Color(20, 45, 70);
+                cardTopLeft = new Color(30, 65, 95);
+                cardBottomRight = new Color(15, 35, 55);
+                break;
+            case "Forest":
+                bgMain = new Color(15, 30, 20);
+                cardBody = new Color(25, 50, 35);
+                cardTopLeft = new Color(35, 70, 50);
+                cardBottomRight = new Color(20, 40, 30);
+                break;
+            case "Sunset":
+                bgMain = new Color(40, 20, 30);
+                cardBody = new Color(70, 35, 45);
+                cardTopLeft = new Color(95, 50, 65);
+                cardBottomRight = new Color(55, 25, 35);
+                break;
+            default: // Dark
+                bgMain = new Color(18, 18, 20);
+                cardBody = new Color(0x222226);
+                cardTopLeft = new Color(0x29292D);
+                cardBottomRight = new Color(0x1C1C20);
+                break;
+        }
+
+        getContentPane().setBackground(bgMain);
+        refreshUI();
+    }
+
     // Custom Component for Opacity Support
-    private static class AnimatedCard extends JPanel {
+    private class AnimatedCard extends JPanel {
         private float alpha = 1.0f;
         private boolean hovered = false;
         private Timer pulseTimer;
@@ -1060,10 +1203,34 @@ public class App extends JFrame {
             int w = getWidth();
             int h = getHeight();
 
-            Color body = new Color(0x222226);
-            Color topLeft = new Color(0x29292D);
-            Color bottomRight = new Color(0x1C1C20);
+            String theme = configManager.getTheme();
+            Color body;
+            Color topLeft;
+            Color bottomRight;
             Color accent = Color.WHITE;
+
+            switch (theme) {
+                case "Deep Ocean":
+                    body = new Color(20, 45, 70);
+                    topLeft = new Color(30, 65, 95);
+                    bottomRight = new Color(15, 35, 55);
+                    break;
+                case "Forest":
+                    body = new Color(25, 50, 35);
+                    topLeft = new Color(35, 70, 50);
+                    bottomRight = new Color(20, 40, 30);
+                    break;
+                case "Sunset":
+                    body = new Color(70, 35, 45);
+                    topLeft = new Color(95, 50, 65);
+                    bottomRight = new Color(55, 25, 35);
+                    break;
+                default: // Dark
+                    body = new Color(0x222226);
+                    topLeft = new Color(0x29292D);
+                    bottomRight = new Color(0x1C1C20);
+                    break;
+            }
 
             // Main body
             g2.setColor(body);

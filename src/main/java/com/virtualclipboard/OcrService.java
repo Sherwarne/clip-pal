@@ -63,12 +63,23 @@ public class OcrService {
 
         // Construct search URL based on engine
         switch (engine) {
+            case "Google":
+                return getGoogleSearchUrl(imageUrl);
             case "Yandex":
                 return getYandexSearchUrl(imageUrl);
             case "Bing":
                 return getBingSearchUrl(imageUrl);
             default:
-                return getYandexSearchUrl(imageUrl);
+                return getGoogleSearchUrl(imageUrl);
+        }
+    }
+
+    private String getGoogleSearchUrl(String imageUrl) throws IOException {
+        try {
+            String encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8");
+            return "https://www.google.com/searchbyimage?image_url=" + encodedUrl;
+        } catch (Exception e) {
+            throw new IOException("Failed to encode URL for Google", e);
         }
     }
 

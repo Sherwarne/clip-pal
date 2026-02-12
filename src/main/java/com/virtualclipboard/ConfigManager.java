@@ -53,4 +53,36 @@ public class ConfigManager {
     public void setSearchEngine(String engine) {
         properties.setProperty("searchEngine", engine);
     }
+
+    public String getTheme() {
+        return properties.getProperty("theme", "Dark");
+    }
+
+    public void setTheme(String theme) {
+        properties.setProperty("theme", theme);
+    }
+
+    public int getFontSize() {
+        return Integer.parseInt(properties.getProperty("fontSize", "14"));
+    }
+
+    public void setFontSize(int size) {
+        properties.setProperty("fontSize", String.valueOf(size));
+    }
+
+    public int getMaxHistory() {
+        return Integer.parseInt(properties.getProperty("maxHistory", "50"));
+    }
+
+    public void setMaxHistory(int max) {
+        properties.setProperty("maxHistory", String.valueOf(max));
+    }
+
+    public boolean isAutoStart() {
+        return Boolean.parseBoolean(properties.getProperty("autoStart", "false"));
+    }
+
+    public void setAutoStart(boolean enabled) {
+        properties.setProperty("autoStart", String.valueOf(enabled));
+    }
 }
