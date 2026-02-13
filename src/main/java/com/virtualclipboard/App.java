@@ -21,8 +21,12 @@ import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URI;
+import java.awt.Desktop;
+import java.awt.font.TextAttribute;
 import java.time.format.DateTimeFormatter;
 import com.formdev.flatlaf.extras.FlatSVGIcon;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -468,7 +472,9 @@ public class App extends JFrame {
         boolean searchAll = searchScopeCombo != null && "All Tabs".equals(searchScopeCombo.getSelectedItem());
         List<ClipboardTab> searchList = searchAll ? tabs : List.of(getCurrentTab());
 
-        int windowWidth = getWidth();
+        int windowWidth = scrollPane.getViewport().getWidth();
+        if (windowWidth <= 0) windowWidth = getWidth() - 20; // Fallback if viewport not ready
+        
         int cols;
         if (windowWidth > 1300) cols = 4;
         else if (windowWidth > 900) cols = 3;
@@ -528,11 +534,11 @@ public class App extends JFrame {
                 gbc.gridwidth = itemCols;
                 gbc.gridheight = itemRows;
                 gbc.fill = GridBagConstraints.BOTH;
-                gbc.insets = new Insets(10, 10, 10, 10);
+                gbc.insets = new Insets(5, 5, 5, 5);
                 gbc.weightx = 1.0;
                 gbc.weighty = 0.0; // Don't stretch vertically unless needed
 
-                contentPanel.add(createItemCard(item), gbc);
+                contentPanel.add(createItemCard(item, windowWidth), gbc);
             }
         }
 
@@ -620,8 +626,7 @@ public class App extends JFrame {
         }
     }
 
-    private AnimatedCard createItemCard(ClipboardItem item) {
-        int windowWidth = getWidth();
+    private AnimatedCard createItemCard(ClipboardItem item, int windowWidth) {
         int windowHeight = getHeight();
         
         // Base dimensions relative to 1920x1080 reference
@@ -634,7 +639,7 @@ public class App extends JFrame {
         else if (windowWidth > 600) cols = 2;
         else cols = 1;
 
-        int baseCardWidth = (windowWidth - (cols + 1) * 20) / cols;
+        int baseCardWidth = (windowWidth - (cols * 20)) / cols; 
         // Increased base height by 25% (from 160 to 200) and scaled with window height
         int baseCardHeight = (int) (200 * Math.max(0.8, heightScale)); 
         
@@ -644,9 +649,9 @@ public class App extends JFrame {
         int cardWidth = baseCardWidth * itemCols + (itemCols - 1) * 20;
         int cardHeight = baseCardHeight * itemRows + (itemRows - 1) * 20;
 
-        AnimatedCard card = new AnimatedCard(new BorderLayout(15, 10));
+        AnimatedCard card = new AnimatedCard(new BorderLayout(10, 5));
         card.setPreferredSize(new Dimension(cardWidth, cardHeight));
-        card.setBorder(new EmptyBorder(15, 20, 20, 20));
+        card.setBorder(new EmptyBorder(8, 12, 8, 12));
 
         // Header Section (Time + Controls)
         JPanel headerPanel = new JPanel(new BorderLayout());
@@ -694,9 +699,9 @@ public class App extends JFrame {
         });
 
         controlPanel.add(infoBtn);
-        controlPanel.add(Box.createHorizontalStrut(8));
+        controlPanel.add(Box.createHorizontalStrut(5));
         controlPanel.add(moveBtn);
-        controlPanel.add(Box.createHorizontalStrut(8));
+        controlPanel.add(Box.createHorizontalStrut(5));
         controlPanel.add(deleteBtn);
 
         headerPanel.add(time, BorderLayout.WEST);
@@ -707,18 +712,44 @@ public class App extends JFrame {
         JPanel contentArea = new JPanel(new BorderLayout());
         contentArea.setOpaque(false);
 
-        JLabel preview = new JLabel();
-        preview.setForeground(Color.WHITE);
-        preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
+            JTextArea preview = new JTextArea();
+            preview.setLineWrap(true);
+            preview.setWrapStyleWord(true);
+            preview.setEditable(false);
+            preview.setOpaque(false);
+            preview.setFocusable(false);
+            preview.setMargin(new Insets(0, 0, 0, 0));
+            preview.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            
+            if (item.getType() == ClipboardItem.Type.URL) {
+                preview.setForeground(getThemeColor("accent"));
+                Map<TextAttribute, Object> attributes = new HashMap<>();
+                attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
+                preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2).deriveFont(attributes));
+            } else {
+                preview.setForeground(Color.WHITE);
+                preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
+            }
 
-        if (item.getType() == ClipboardItem.Type.TEXT) {
             String text = item.getText().trim();
-            int maxChars = (itemCols * itemRows > 1) ? 500 : 100;
+            int maxChars = (itemCols * itemRows > 1) ? 600 : 250;
             if (text.length() > maxChars)
                 text = text.substring(0, maxChars - 3) + "...";
-            preview.setText("<html><body style='width: " + (cardWidth - 60) + "px'>"
-                    + text.replace("<", "&lt;").replace("\n", " ") + "</body></html>");
+            preview.setText(text.replace("\n", " "));
+            
+            // Forward mouse events to the card
+            preview.addMouseListener(new MouseAdapter() {
+                @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            });
+
+            contentArea.add(preview, BorderLayout.CENTER);
         } else {
+            JLabel preview = new JLabel();
             int maxImgWidth = cardWidth - 40;
             int maxImgHeight = cardHeight - 80;
             
@@ -735,12 +766,16 @@ public class App extends JFrame {
             
             Image scaled = item.getImage().getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
             preview.setIcon(new ImageIcon(scaled));
+            contentArea.add(preview, BorderLayout.CENTER);
         }
-        contentArea.add(preview, BorderLayout.CENTER);
         card.add(contentArea, BorderLayout.CENTER);
 
         // Type Indicator (Bottom Right)
-        JLabel typeIndicator = new JLabel(item.getType() == ClipboardItem.Type.TEXT ? "T" : "I");
+        String typeStr = "T";
+        if (item.getType() == ClipboardItem.Type.IMAGE) typeStr = "I";
+        else if (item.getType() == ClipboardItem.Type.URL) typeStr = "U";
+        
+        JLabel typeIndicator = new JLabel(typeStr);
         typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3));
         typeIndicator.setForeground(new Color(110, 110, 125, 150));
 
@@ -763,8 +798,12 @@ public class App extends JFrame {
 
             @Override
             public void mouseClicked(MouseEvent e) {
-                copyToSystemClipboard(item);
-                animateCopyFeedback(card, time, item);
+                if (item.getType() == ClipboardItem.Type.URL && e.isShiftDown()) {
+                    openBrowser(item.getText());
+                } else {
+                    copyToSystemClipboard(item);
+                    animateCopyFeedback(card, time, item);
+                }
             }
         });
 
@@ -918,10 +957,15 @@ public class App extends JFrame {
         details.add(new String[] { "Type", item.getType().toString() });
         details.add(new String[] { "Size", item.getFormattedSize() });
 
-        if (item.getType() == ClipboardItem.Type.TEXT) {
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
             details.add(new String[] { "Characters", String.valueOf(item.getCharacterCount()) });
             details.add(new String[] { "Words", String.valueOf(item.getWordCount()) });
             details.add(new String[] { "Lines", String.valueOf(item.getLineCount()) });
+            
+            if (item.getType() == ClipboardItem.Type.URL) {
+                details.add(new String[] { "Domain", item.getUrlDomain() });
+                details.add(new String[] { "Protocol", item.getUrlProtocol() });
+            }
         } else {
             details.add(new String[] { "Dimensions", item.getWidth() + " x " + item.getHeight() });
             details.add(new String[] { "Aspect Ratio", item.getAspectRatio() });
@@ -943,14 +987,23 @@ public class App extends JFrame {
         mainPanel.add(metaPanel, BorderLayout.NORTH);
 
         // Preview
-        if (item.getType() == ClipboardItem.Type.TEXT) {
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
             JTextArea textArea = new JTextArea(item.getText());
             textArea.setEditable(false);
             textArea.setLineWrap(true);
             textArea.setWrapStyleWord(true);
             textArea.setBackground(new Color(28, 28, 32));
-            textArea.setForeground(Color.WHITE);
-            textArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16));
+            
+            if (item.getType() == ClipboardItem.Type.URL) {
+                textArea.setForeground(getThemeColor("accent"));
+                Map<TextAttribute, Object> attributes = new HashMap<>();
+                attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
+                textArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16).deriveFont(attributes));
+            } else {
+                textArea.setForeground(Color.WHITE);
+                textArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16));
+            }
+            
             textArea.setCaretColor(Color.WHITE);
             textArea.setBorder(new EmptyBorder(15, 15, 15, 15));
 
@@ -1449,6 +1502,11 @@ public class App extends JFrame {
     }
 
     private void openBrowser(String url) {
+        if (url == null || url.isBlank()) return;
+        
+        // Ensure protocol
+        String finalUrl = url.toLowerCase().startsWith("http") ? url : "http://" + url;
+        
         String browser = configManager.getBrowser();
         boolean incognito = configManager.isIncognito();
 
@@ -1456,7 +1514,7 @@ public class App extends JFrame {
         if ("System Default".equals(browser) && !incognito) {
             try {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                    Desktop.getDesktop().browse(new URI(url));
+                    Desktop.getDesktop().browse(new URI(finalUrl));
                     return;
                 }
             } catch (Exception e) {
@@ -1481,7 +1539,7 @@ public class App extends JFrame {
                     }
                 }
 
-                command.add(url);
+                command.add(finalUrl);
                 new ProcessBuilder(command).start();
                 return;
             }
@@ -1492,7 +1550,7 @@ public class App extends JFrame {
         // Fallback to system default
         try {
             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(new URI(url));
+                Desktop.getDesktop().browse(new URI(finalUrl));
             }
         } catch (Exception ex) {
             ex.printStackTrace();

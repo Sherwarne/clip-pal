@@ -6,16 +6,21 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.net.URI;
+import java.net.URL;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 public class ClipboardItem implements Serializable {
     private static final long serialVersionUID = 1L;
     public enum Type {
-        TEXT, IMAGE
+        TEXT, IMAGE, URL
     }
 
     private final Type type;
     private final String text;
+    private final String urlDomain;
+    private final String urlProtocol;
     private transient BufferedImage image;
     private final LocalDateTime timestamp;
     private final long sizeInBytes;
@@ -37,19 +42,55 @@ public class ClipboardItem implements Serializable {
     }
 
     public ClipboardItem(String text) {
-        this.type = Type.TEXT;
         this.text = text;
         this.image = null;
         this.timestamp = LocalDateTime.now();
         this.sizeInBytes = text.getBytes().length;
         this.width = -1;
         this.height = -1;
+
+        if (isURL(text)) {
+            this.type = Type.URL;
+            String domain = "N/A";
+            String protocol = "N/A";
+            try {
+                String spec = text.startsWith("http") ? text : "http://" + text;
+                URL url = new URI(spec).toURL();
+                domain = url.getHost();
+                protocol = url.getProtocol();
+            } catch (Exception e) {
+                // Not a valid URL despite regex
+            }
+            this.urlDomain = domain;
+            this.urlProtocol = protocol;
+        } else {
+            this.type = Type.TEXT;
+            this.urlDomain = null;
+            this.urlProtocol = null;
+        }
+    }
+
+    private boolean isURL(String text) {
+        if (text == null || text.isBlank()) return false;
+        // Basic URL regex: optional protocol, domain.tld, optional path/query
+        String urlRegex = "^(https?://)?([\\da-z.-]+)\\.([a-z.]{2,6})([/\\w.-]*)/?$";
+        return text.trim().matches(urlRegex);
+    }
+
+    public String getUrlDomain() {
+        return urlDomain;
+    }
+
+    public String getUrlProtocol() {
+        return urlProtocol;
     }
 
     public ClipboardItem(BufferedImage image) {
         this.type = Type.IMAGE;
         this.image = image;
         this.text = null;
+        this.urlDomain = null;
+        this.urlProtocol = null;
         this.timestamp = LocalDateTime.now();
         this.sizeInBytes = (long) image.getWidth() * image.getHeight() * 4; // Approx size for RGBA
         this.width = image.getWidth();
@@ -93,19 +134,19 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getWordCount() {
-        if (type != Type.TEXT || text == null || text.isBlank())
+        if ((type != Type.TEXT && type != Type.URL) || text == null || text.isBlank())
             return 0;
         return text.trim().split("\\s+").length;
     }
 
     public int getLineCount() {
-        if (type != Type.TEXT || text == null || text.isEmpty())
+        if ((type != Type.TEXT && type != Type.URL) || text == null || text.isEmpty())
             return 0;
         return (int) text.lines().count();
     }
 
     public int getCharacterCount() {
-        if (type != Type.TEXT || text == null)
+        if ((type != Type.TEXT && type != Type.URL) || text == null)
             return 0;
         return text.length();
     }
@@ -123,7 +164,7 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getRows() {
-        if (type == Type.TEXT) {
+        if (type == Type.TEXT || type == Type.URL) {
             if (getCharacterCount() > 500 || getLineCount() > 10) return 2;
             return 1;
         } else {
@@ -135,7 +176,7 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getCols() {
-        if (type == Type.TEXT) {
+        if (type == Type.TEXT || type == Type.URL) {
             if (getCharacterCount() > 150 || getLineCount() > 4) return 2;
             return 1;
         } else {
@@ -155,13 +196,22 @@ public class ClipboardItem implements Serializable {
         ClipboardItem that = (ClipboardItem) o;
         if (type != that.type)
             return false;
-        if (type == Type.TEXT) {
-            return text.equals(that.text);
+        if (type == Type.TEXT || type == Type.URL) {
+            return Objects.equals(text, that.text);
         } else {
-            // Simple check for images - compare dimensions or hash (though bufferedImage
-            // hash is object-based)
-            // For now, let's just use object equality for the monitor logic
-            return image == that.image;
+            // Simple check for images - compare dimensions and hash
+            // (Note: BufferedImage hash is object-based, so this is still mostly identity)
+            return width == that.width && height == that.height && image == that.image;
+        }
+    }
+
+    @Override
+    public int hashCode() {
+        if (type == Type.TEXT || type == Type.URL) {
+            return Objects.hash(type, text);
+        } else {
+            // For images, hash is based on type and dimensions (since image itself is not hash-stable)
+            return Objects.hash(type, width, height, image);
         }
     }
 
@@ -170,7 +220,7 @@ public class ClipboardItem implements Serializable {
             return false;
         if (this.type != other.type)
             return false;
-        if (this.type == Type.TEXT) {
+        if (this.type == Type.TEXT || this.type == Type.URL) {
             return this.text.equals(other.text);
         } else {
             // For images, we should ideally compare pixel data, but references might be
