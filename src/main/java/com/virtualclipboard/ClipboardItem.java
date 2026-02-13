@@ -25,14 +25,22 @@ public class ClipboardItem implements Serializable {
     private void writeObject(ObjectOutputStream out) throws IOException {
         out.defaultWriteObject();
         if (type == Type.IMAGE && image != null) {
-            ImageIO.write(image, "png", out);
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            ImageIO.write(image, "png", baos);
+            byte[] imageBytes = baos.toByteArray();
+            out.writeInt(imageBytes.length);
+            out.write(imageBytes);
         }
     }
 
     private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
         in.defaultReadObject();
         if (type == Type.IMAGE) {
-            image = ImageIO.read(in);
+            int length = in.readInt();
+            byte[] imageBytes = new byte[length];
+            in.readFully(imageBytes);
+            java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(imageBytes);
+            image = ImageIO.read(bais);
         }
     }
 
@@ -124,24 +132,23 @@ public class ClipboardItem implements Serializable {
 
     public int getRows() {
         if (type == Type.TEXT) {
-            if (getCharacterCount() > 500 || getLineCount() > 10) return 2;
+            if (getCharacterCount() > 500 || getLineCount() > 10) return 2; // Even longer
             return 1;
         } else {
-            double ar = (double) width / height;
-            if (ar < 0.5) return 2; // Portrait (updated threshold)
-            if (width > 800 && height > 600) return 2; // Large
+            if (width > 1200 || height > 1000) return 2; // Very big
+            if (height > width * 1.5) return 2; // Taller
             return 1;
         }
     }
 
     public int getCols() {
         if (type == Type.TEXT) {
-            if (getCharacterCount() > 150 || getLineCount() > 4) return 2;
+            if (getCharacterCount() > 500 || getLineCount() > 10) return 2; // Even longer
+            if (getCharacterCount() > 150 || getLineCount() > 4) return 2; // Longer
             return 1;
         } else {
-            double ar = (double) width / height;
-            if (ar > 4.0) return 2; // Panoramic (updated threshold)
-            if (width > 800 && height > 600) return 2; // Large
+            if (width > 1200 || height > 1000) return 2; // Very big
+            if (width > height * 1.5) return 2; // Wider
             return 1;
         }
     }

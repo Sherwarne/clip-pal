@@ -85,4 +85,20 @@ public class ConfigManager {
     public void setAutoStart(boolean enabled) {
         properties.setProperty("autoStart", String.valueOf(enabled));
     }
+
+    public boolean isDynamicSizing() {
+        return Boolean.parseBoolean(properties.getProperty("dynamicSizing", "true"));
+    }
+
+    public void setDynamicSizing(boolean enabled) {
+        properties.setProperty("dynamicSizing", String.valueOf(enabled));
+    }
+
+    public int getGridSize() {
+        return Integer.parseInt(properties.getProperty("gridSize", "3"));
+    }
+
+    public void setGridSize(int size) {
+        properties.setProperty("gridSize", String.valueOf(size));
+    }
 }

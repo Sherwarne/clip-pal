@@ -65,13 +65,72 @@ public class App extends JFrame {
         return new Font(name, style, (int) size);
     }
 
+    private void updateWindowDimensions() {
+        // Preset dimensions for perfect alignment
+        // Card Width (m) = 350px
+        // Row Height (n) = 200px
+        // Gap = 20px
+        // Columns = Rows (as requested)
+        
+        int cols = configManager.getGridSize();
+        if (cols < 2) cols = 2;
+        if (cols > 4) cols = 4;
+        
+        int m = 350;
+        int n = 200;
+        int gap = 20;
+        
+        // Calculate Content Dimensions
+        // Width = cols * m + (cols - 1) * gap + 2 * 10 (outer margins)
+        // Wait, masonry grid has 10px insets per cell?
+        // Let's align with refreshUI logic.
+        // refreshUI uses:
+        // m = (availableWidth / cols) - 20;
+        // So availableWidth = cols * (m + 20).
+        
+        int contentWidth = cols * (m + 20);
+        
+        // Height = rows * n + (rows - 1) * gap
+        // But we need to account for header space.
+        // Let's set the SCROLLPANE viewport height to match exactly.
+        // However, the window height includes header + borders.
+        
+        // Let's target a clean integer content size.
+        // For 4 cols/rows: 4 * 220 = 880 width.
+        // 4 * 220 = 880 height? 
+        // 4 * 200 + 3*20 = 860 height.
+        
+        int contentHeight = cols * n + (cols - 1) * gap;
+        
+        // Header is roughly 150px (Logo 48 + Search 35 + Tabs 40 + Margins).
+        // Let's estimate header height or measure it.
+        // To be safe, let's set a preferred size for the content panel and pack the frame.
+        
+        // We will set the preferred size of the CONTENT PANEL in refreshUI,
+        // but here we need to set the initial window size.
+        
+        // Rough estimates including header (~160px) and window decorations (~40px)
+        int headerHeight = 160; 
+        if (cols == 4) headerHeight = 100; // Reduce header space for 4 rows mode
+        
+        int totalWidth = contentWidth + 40; // + scrollbar/borders
+        int totalHeight = contentHeight + headerHeight + 40;
+        
+        setSize(totalWidth, totalHeight);
+        
+        // Re-center on screen
+        setLocationRelativeTo(null);
+    }
+
     public App() {
         ocrService = new OcrService();
         setTitle("Clip-Pal");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(900, 750);
-        setMinimumSize(new Dimension(500, 600));
+        setResizable(false);
         setLocationRelativeTo(null);
+        
+        // Initial sizing based on config
+        updateWindowDimensions();
 
         Color bgMain = new Color(18, 18, 20);
 
@@ -468,81 +527,115 @@ public class App extends JFrame {
         boolean searchAll = searchScopeCombo != null && "All Tabs".equals(searchScopeCombo.getSelectedItem());
         List<ClipboardTab> searchList = searchAll ? tabs : List.of(getCurrentTab());
 
-        int windowWidth = getWidth();
-        int cols;
-        if (windowWidth > 1300) cols = 4;
-        else if (windowWidth > 900) cols = 3;
-        else if (windowWidth > 600) cols = 2;
-        else cols = 1;
+        // Use viewport width if available, else window width
+        int availableWidth = scrollPane.getViewport().getWidth();
+        if (availableWidth <= 0) availableWidth = getContentPane().getWidth() - 30;
+        // Subtract a small buffer to prevent horizontal scrollbar from flickering
+        availableWidth -= 15; // Increased buffer for safety
+
+        boolean dynamicEnabled = configManager.isDynamicSizing();
+
+        // Use fixed grid size from settings
+        int cols = configManager.getGridSize();
+        if (cols < 2) cols = 2;
+        if (cols > 4) cols = 4;
+        
+        // Adjust header spacing for compact mode (4 rows/cols)
+        JPanel headerPanel = (JPanel) getContentPane().getComponent(0);
+        if (cols == 4) {
+            headerPanel.setBorder(new EmptyBorder(15, 30, 10, 30)); // Compact header
+        } else {
+            headerPanel.setBorder(new EmptyBorder(40, 30, 20, 30)); // Standard header
+        }
 
         // Simple Masonry Grid Tracker
-        boolean[][] occupied = new boolean[1000][cols]; // rows x cols
+        boolean[][] occupied = new boolean[5000][cols];
         int currentMaxRow = 0;
+        
+        // Pre-calculate layout to find max width
+        class LayoutItem {
+            ClipboardItem item;
+            int x, y, w, h;
+            LayoutItem(ClipboardItem item, int x, int y, int w, int h) {
+                this.item = item; this.x = x; this.y = y; this.w = w; this.h = h;
+            }
+        }
+        List<LayoutItem> layoutItems = new ArrayList<>();
 
         for (ClipboardTab tab : searchList) {
             for (ClipboardItem item : tab.items) {
-                if (!searchQuery.isEmpty()) {
-                    if (item.getType() == ClipboardItem.Type.TEXT) {
-                        if (!item.getText().toLowerCase().contains(searchQuery)) continue;
-                    } else continue;
-                }
+                if (!searchQuery.isEmpty() && item.getType() == ClipboardItem.Type.TEXT) {
+                    if (!item.getText().toLowerCase().contains(searchQuery)) continue;
+                } else if (!searchQuery.isEmpty()) continue;
 
-                int itemRows = item.getRows();
-                int itemCols = Math.min(item.getCols(), cols); // Don't exceed available columns
+                int itemRows = dynamicEnabled ? item.getRows() : 1;
+                int itemCols = dynamicEnabled ? item.getCols() : 1;
+                if (itemCols > cols) itemCols = cols;
 
-                // Find first available slot
-                int gridX = 0, gridY = 0;
                 boolean found = false;
-                for (int y = 0; y < 1000 && !found; y++) {
+                for (int y = 0; y < 4990 && !found; y++) {
                     for (int x = 0; x <= cols - itemCols; x++) {
                         boolean canFit = true;
                         for (int dy = 0; dy < itemRows; dy++) {
                             for (int dx = 0; dx < itemCols; dx++) {
-                                if (occupied[y + dy][x + dx]) {
-                                    canFit = false;
-                                    break;
-                                }
+                                if (occupied[y + dy][x + dx]) { canFit = false; break; }
                             }
                             if (!canFit) break;
                         }
-
                         if (canFit) {
-                            gridX = x;
-                            gridY = y;
-                            // Mark occupied
                             for (int dy = 0; dy < itemRows; dy++) {
-                                for (int dx = 0; dx < itemCols; dx++) {
-                                    occupied[y + dy][x + dx] = true;
-                                }
+                                for (int dx = 0; dx < itemCols; dx++) { occupied[y + dy][x + dx] = true; }
                             }
+                            layoutItems.add(new LayoutItem(item, x, y, itemCols, itemRows));
                             currentMaxRow = Math.max(currentMaxRow, y + itemRows);
                             found = true;
                             break;
                         }
                     }
                 }
-
-                GridBagConstraints gbc = new GridBagConstraints();
-                gbc.gridx = gridX;
-                gbc.gridy = gridY;
-                gbc.gridwidth = itemCols;
-                gbc.gridheight = itemRows;
-                gbc.fill = GridBagConstraints.BOTH;
-                gbc.insets = new Insets(10, 10, 10, 10);
-                gbc.weightx = 1.0;
-                gbc.weighty = 0.0; // Don't stretch vertically unless needed
-
-                contentPanel.add(createItemCard(item), gbc);
             }
         }
 
-        // Add a filler at the bottom to keep items at the top
-        GridBagConstraints fillerGbc = new GridBagConstraints();
-        fillerGbc.gridx = 0;
-        fillerGbc.gridy = currentMaxRow;
-        fillerGbc.gridwidth = cols;
-        fillerGbc.weighty = 1.0;
-        contentPanel.add(Box.createVerticalGlue(), fillerGbc);
+        // Enforce STRICT integer arithmetic for perfect alignment
+        // m is now fixed at 350px as per the preset logic
+        int m = 350;
+        int n = 200;
+        
+        // availableWidth is now strictly determined by the window size
+        // We do not calculate m from availableWidth anymore.
+        // Instead, we just use the fixed m and n.
+
+        for (LayoutItem li : layoutItems) {
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.gridx = li.x;
+            gbc.gridy = li.y;
+            gbc.gridwidth = li.w;
+            gbc.gridheight = li.h;
+            gbc.fill = GridBagConstraints.BOTH;
+            gbc.insets = new Insets(10, 10, 10, 10);
+            gbc.weightx = (double) li.w / cols;
+            gbc.weighty = 0.0;
+
+            contentPanel.add(createItemCard(li.item, li.w, li.h, m, n), gbc);
+        }
+
+        // Add a hidden filler component for every empty column to ensure column widths stay consistent
+        for (int x = 0; x < cols; x++) {
+            GridBagConstraints fillerGbc = new GridBagConstraints();
+            fillerGbc.gridx = x;
+            fillerGbc.gridy = currentMaxRow + 1;
+            fillerGbc.weightx = 1.0 / cols;
+            fillerGbc.fill = GridBagConstraints.HORIZONTAL;
+            contentPanel.add(Box.createHorizontalGlue(), fillerGbc);
+        }
+
+        // Add a vertical filler at the bottom to keep items at the top
+        GridBagConstraints verticalFillerGbc = new GridBagConstraints();
+        verticalFillerGbc.gridx = 0;
+        verticalFillerGbc.gridy = currentMaxRow + 2;
+        verticalFillerGbc.gridwidth = cols;
+        verticalFillerGbc.weighty = 1.0;
+        contentPanel.add(Box.createVerticalGlue(), verticalFillerGbc);
 
         contentPanel.revalidate();
         contentPanel.repaint();
@@ -620,32 +713,19 @@ public class App extends JFrame {
         }
     }
 
-    private AnimatedCard createItemCard(ClipboardItem item) {
-        int windowWidth = getWidth();
-        int windowHeight = getHeight();
-        
-        // Base dimensions relative to 1920x1080 reference
-        double widthScale = (double) windowWidth / 1920.0;
-        double heightScale = (double) windowHeight / 1080.0;
-        
-        int cols;
-        if (windowWidth > 1300) cols = 4;
-        else if (windowWidth > 900) cols = 3;
-        else if (windowWidth > 600) cols = 2;
-        else cols = 1;
-
-        int baseCardWidth = (windowWidth - (cols + 1) * 20) / cols;
-        // Increased base height by 25% (from 160 to 200) and scaled with window height
-        int baseCardHeight = (int) (200 * Math.max(0.8, heightScale)); 
-        
-        int itemCols = Math.min(item.getCols(), cols);
-        int itemRows = item.getRows();
-        
-        int cardWidth = baseCardWidth * itemCols + (itemCols - 1) * 20;
-        int cardHeight = baseCardHeight * itemRows + (itemRows - 1) * 20;
+    private AnimatedCard createItemCard(ClipboardItem item, int actualCols, int actualRows, int m, int n) {
+        // Enforce the requested system:
+        // 1 column width = m
+        // 2 column widths = 2*m + 20 (padding)
+        // 1 column height = n
+        // 2 column heights = 2*n + 20 (padding)
+        int cardWidth = actualCols * m + (actualCols - 1) * 20;
+        int cardHeight = actualRows * n + (actualRows - 1) * 20;
 
         AnimatedCard card = new AnimatedCard(new BorderLayout(15, 10));
         card.setPreferredSize(new Dimension(cardWidth, cardHeight));
+        card.setMaximumSize(new Dimension(cardWidth, cardHeight));
+        card.setMinimumSize(new Dimension(m, n));
         card.setBorder(new EmptyBorder(15, 20, 20, 20));
 
         // Header Section (Time + Controls)
@@ -713,7 +793,7 @@ public class App extends JFrame {
 
         if (item.getType() == ClipboardItem.Type.TEXT) {
             String text = item.getText().trim();
-            int maxChars = (itemCols * itemRows > 1) ? 500 : 100;
+            int maxChars = (actualCols * actualRows > 1) ? 500 : 100;
             if (text.length() > maxChars)
                 text = text.substring(0, maxChars - 3) + "...";
             preview.setText("<html><body style='width: " + (cardWidth - 60) + "px'>"
@@ -992,6 +1072,21 @@ public class App extends JFrame {
             btnPanel.add(scanBtn);
             btnPanel.add(searchBtn);
 
+            JProgressBar progressBar = new JProgressBar(0, 100);
+            progressBar.setStringPainted(true);
+            progressBar.setString("");
+            progressBar.setVisible(false);
+            progressBar.setBackground(new Color(28, 28, 32));
+            progressBar.setForeground(new Color(60, 130, 250));
+            progressBar.setBorder(new LineBorder(new Color(45, 45, 52)));
+            progressBar.setPreferredSize(new Dimension(500, 20));
+
+            JPanel progressPanel = new JPanel(new BorderLayout());
+            progressPanel.setOpaque(false);
+            progressPanel.add(progressBar, BorderLayout.CENTER);
+            progressPanel.setBorder(new EmptyBorder(10, 0, 10, 0));
+            ocrPanel.add(progressPanel, BorderLayout.SOUTH);
+
             JTextArea resultArea = new JTextArea();
             resultArea.setEditable(false);
             resultArea.setLineWrap(true);
@@ -1010,15 +1105,27 @@ public class App extends JFrame {
             scanBtn.addActionListener(e -> {
                 scanBtn.setEnabled(false);
                 scanBtn.setText("Scanning...");
+                progressBar.setValue(0);
+                progressBar.setString("Initializing OCR...");
+                progressBar.setVisible(true);
 
-                new SwingWorker<String, Void>() {
+                new SwingWorker<String, String>() {
                     @Override
                     protected String doInBackground() throws Exception {
-                        return ocrService.extractText(item.getImage());
+                        return ocrService.extractText(item.getImage(), (progress, status) -> {
+                            publish(status);
+                            SwingUtilities.invokeLater(() -> progressBar.setValue(progress));
+                        });
+                    }
+
+                    @Override
+                    protected void process(java.util.List<String> chunks) {
+                        progressBar.setString(chunks.get(chunks.size() - 1));
                     }
 
                     @Override
                     protected void done() {
+                        progressBar.setVisible(false);
                         try {
                             String text = get();
                             if (text == null || text.trim().isEmpty()) {
@@ -1039,7 +1146,7 @@ public class App extends JFrame {
                                     Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
                                     copyOcrBtn.setText("✓ Copied!");
                                 });
-                                ocrPanel.add(copyOcrBtn, BorderLayout.SOUTH);
+                                progressPanel.add(copyOcrBtn, BorderLayout.SOUTH);
 
                                 dialog.pack();
                                 dialog.setLocationRelativeTo(App.this);
@@ -1056,15 +1163,27 @@ public class App extends JFrame {
             searchBtn.addActionListener(e -> {
                 searchBtn.setEnabled(false);
                 searchBtn.setText("Searching...");
-                new SwingWorker<String, Void>() {
+                progressBar.setValue(0);
+                progressBar.setString("Initializing search...");
+                progressBar.setVisible(true);
+                new SwingWorker<String, String>() {
                     @Override
                     protected String doInBackground() throws Exception {
                         String engine = configManager.getSearchEngine();
-                        return ocrService.getSearchUrl(item.getImage(), engine);
+                        return ocrService.getSearchUrl(item.getImage(), engine, (progress, status) -> {
+                            publish(status);
+                            SwingUtilities.invokeLater(() -> progressBar.setValue(progress));
+                        });
+                    }
+
+                    @Override
+                    protected void process(java.util.List<String> chunks) {
+                        progressBar.setString(chunks.get(chunks.size() - 1));
                     }
 
                     @Override
                     protected void done() {
+                        progressBar.setVisible(false);
                         try {
                             String url = get();
                             if (url != null) {
@@ -1074,8 +1193,17 @@ public class App extends JFrame {
                                 searchBtn.setText("No URL Found");
                             }
                         } catch (Exception ex) {
-                            ex.printStackTrace();
-                            searchBtn.setText("Search Failed");
+                            Throwable cause = ex.getCause();
+                            if (cause instanceof java.net.SocketTimeoutException || cause instanceof java.net.ConnectException) {
+                                searchBtn.setText("Timeout: Slow Network");
+                                JOptionPane.showMessageDialog(App.this, 
+                                    "Image search timed out. The upload service (Catbox) might be slow or down.\n" +
+                                    "Please try again in a few moments.", 
+                                    "Search Timeout", JOptionPane.WARNING_MESSAGE);
+                            } else {
+                                searchBtn.setText("Search Failed");
+                                ex.printStackTrace();
+                            }
                         } finally {
                             searchBtn.setEnabled(true);
                         }
@@ -1134,6 +1262,15 @@ public class App extends JFrame {
 
         // Group 1: General Appearance
         contentPanel.add(createSectionHeader("Appearance", accent));
+
+        contentPanel.add(createSettingLabel("Window Layout Size", textSecondary));
+        String[] gridSizes = { "Small (2 Columns)", "Medium (3 Columns)", "Large (4 Columns)" };
+        int currentGridSize = configManager.getGridSize();
+        // Map 2->0, 3->1, 4->2
+        int gridIndex = Math.max(0, Math.min(2, currentGridSize - 2));
+        JComboBox<String> gridCombo = createStyledComboBox(gridSizes, gridSizes[gridIndex]);
+        contentPanel.add(gridCombo);
+        contentPanel.add(Box.createVerticalStrut(15));
         
         contentPanel.add(createSettingLabel("Color Palette", textSecondary));
         String[] themes = { "Dark", "Deep Ocean", "Forest", "Sunset" };
@@ -1160,7 +1297,7 @@ public class App extends JFrame {
         contentPanel.add(Box.createVerticalStrut(15));
 
         contentPanel.add(createSettingLabel("Image Search Engine", textSecondary));
-        String[] searchEngines = { "Google", "Yandex", "Bing" };
+        String[] searchEngines = { "Google", "Yandex" };
         JComboBox<String> searchEngineCombo = createStyledComboBox(searchEngines, configManager.getSearchEngine());
         contentPanel.add(searchEngineCombo);
         contentPanel.add(Box.createVerticalStrut(30));
@@ -1175,8 +1312,11 @@ public class App extends JFrame {
         contentPanel.add(Box.createVerticalStrut(25));
 
         // Switches
+        JCheckBox dynamicSizingCheck = createSettingCheckbox("Dynamic Entry Sizing", configManager.isDynamicSizing(), textPrimary);
         JCheckBox incognitoCheck = createSettingCheckbox("Use Incognito Mode", configManager.isIncognito(), textPrimary);
         JCheckBox autoStartCheck = createSettingCheckbox("Start with Windows", configManager.isAutoStart(), textPrimary);
+        contentPanel.add(dynamicSizingCheck);
+        contentPanel.add(Box.createVerticalStrut(10));
         contentPanel.add(incognitoCheck);
         contentPanel.add(Box.createVerticalStrut(10));
         contentPanel.add(autoStartCheck);
@@ -1201,6 +1341,7 @@ public class App extends JFrame {
             configManager.setTheme((String) themeCombo.getSelectedItem());
             configManager.setFontSize((Integer) fontCombo.getSelectedItem());
             configManager.setMaxHistory((Integer) historyCombo.getSelectedItem());
+            configManager.setDynamicSizing(dynamicSizingCheck.isSelected());
             configManager.setIncognito(incognitoCheck.isSelected());
             configManager.setAutoStart(autoStartCheck.isSelected());
             configManager.save();
