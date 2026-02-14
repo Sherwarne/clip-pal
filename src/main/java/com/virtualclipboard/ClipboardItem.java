@@ -14,7 +14,7 @@ import java.util.Objects;
 public class ClipboardItem implements Serializable {
     private static final long serialVersionUID = 1L;
     public enum Type {
-        TEXT, IMAGE, URL
+        TEXT, IMAGE, URL, SVG
     }
 
     private final Type type;
@@ -42,19 +42,28 @@ public class ClipboardItem implements Serializable {
     }
 
     public ClipboardItem(String text) {
-        this.text = text;
+        String processedText = text;
+        if (text != null && text.contains("[InternetShortcut]") && text.contains("URL=")) {
+            processedText = extractUrlFromShortcut(text);
+        }
+
+        this.text = processedText;
         this.image = null;
         this.timestamp = LocalDateTime.now();
-        this.sizeInBytes = text.getBytes().length;
+        this.sizeInBytes = processedText.getBytes().length;
         this.width = -1;
         this.height = -1;
 
-        if (isURL(text)) {
+        if (isSVG(processedText)) {
+            this.type = Type.SVG;
+            this.urlDomain = null;
+            this.urlProtocol = null;
+        } else if (isURL(processedText)) {
             this.type = Type.URL;
             String domain = "N/A";
             String protocol = "N/A";
             try {
-                String spec = text.startsWith("http") ? text : "http://" + text;
+                String spec = processedText.startsWith("http") ? processedText : "http://" + processedText;
                 URL url = new URI(spec).toURL();
                 domain = url.getHost();
                 protocol = url.getProtocol();
@@ -70,11 +79,34 @@ public class ClipboardItem implements Serializable {
         }
     }
 
+    private String extractUrlFromShortcut(String text) {
+        String[] lines = text.split("\\R");
+        for (String line : lines) {
+            if (line.trim().startsWith("URL=")) {
+                return line.substring(line.indexOf("=") + 1).trim();
+            }
+        }
+        return text;
+    }
+
+    private boolean isSVG(String text) {
+        if (text == null || text.isBlank()) return false;
+        String trimmed = text.trim().toLowerCase();
+        // Check for <svg tag. Might be preceded by <?xml...?>
+        return trimmed.contains("<svg") && trimmed.endsWith("</svg>");
+    }
+
     private boolean isURL(String text) {
         if (text == null || text.isBlank()) return false;
-        // Basic URL regex: optional protocol, domain.tld, optional path/query
-        String urlRegex = "^(https?://)?([\\da-z.-]+)\\.([a-z.]{2,6})([/\\w.-]*)/?$";
-        return text.trim().matches(urlRegex);
+        // More inclusive URL regex: handles protocols, domains, paths, query params, and fragments
+        // Including characters like (), [], ?, &, =, etc.
+        String urlRegex = "^(https?://)?([\\da-z.-]+)\\.([a-z.]{2,6})([/\\w\\s.-]*)*(\\?[^\\s]*)?(#[^\\s]*)?/?$";
+        // Actually, let's use a simpler but more robust approach: 
+        // If it starts with http or contains :// and has no spaces, it's likely a URL
+        String trimmed = text.trim();
+        if (trimmed.contains(" ") || trimmed.contains("\n")) return false;
+        
+        return trimmed.matches("^(https?://)?[\\da-z.-]+\\.[a-z.]{2,6}.*$");
     }
 
     public String getUrlDomain() {
@@ -134,19 +166,19 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getWordCount() {
-        if ((type != Type.TEXT && type != Type.URL) || text == null || text.isBlank())
+        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG) || text == null || text.isBlank())
             return 0;
         return text.trim().split("\\s+").length;
     }
 
     public int getLineCount() {
-        if ((type != Type.TEXT && type != Type.URL) || text == null || text.isEmpty())
+        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG) || text == null || text.isEmpty())
             return 0;
         return (int) text.lines().count();
     }
 
     public int getCharacterCount() {
-        if ((type != Type.TEXT && type != Type.URL) || text == null)
+        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG) || text == null)
             return 0;
         return text.length();
     }
@@ -164,7 +196,7 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getRows() {
-        if (type == Type.TEXT || type == Type.URL) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
             if (getCharacterCount() > 500 || getLineCount() > 10) return 2;
             return 1;
         } else {
@@ -176,7 +208,7 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getCols() {
-        if (type == Type.TEXT || type == Type.URL) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
             if (getCharacterCount() > 150 || getLineCount() > 4) return 2;
             return 1;
         } else {
@@ -196,7 +228,7 @@ public class ClipboardItem implements Serializable {
         ClipboardItem that = (ClipboardItem) o;
         if (type != that.type)
             return false;
-        if (type == Type.TEXT || type == Type.URL) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
             return Objects.equals(text, that.text);
         } else {
             // Simple check for images - compare dimensions and hash
@@ -207,7 +239,7 @@ public class ClipboardItem implements Serializable {
 
     @Override
     public int hashCode() {
-        if (type == Type.TEXT || type == Type.URL) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
             return Objects.hash(type, text);
         } else {
             // For images, hash is based on type and dimensions (since image itself is not hash-stable)
@@ -220,7 +252,7 @@ public class ClipboardItem implements Serializable {
             return false;
         if (this.type != other.type)
             return false;
-        if (this.type == Type.TEXT || this.type == Type.URL) {
+        if (this.type == Type.TEXT || this.type == Type.URL || this.type == Type.SVG) {
             return this.text.equals(other.text);
         } else {
             // For images, we should ideally compare pixel data, but references might be

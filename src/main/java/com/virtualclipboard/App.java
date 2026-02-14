@@ -10,6 +10,10 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
 import java.awt.datatransfer.UnsupportedFlavorException;
+import java.awt.dnd.DnDConstants;
+import java.awt.dnd.DropTarget;
+import java.awt.dnd.DropTargetAdapter;
+import java.awt.dnd.DropTargetDropEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.KeyAdapter;
@@ -21,6 +25,7 @@ import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.awt.Desktop;
 import java.awt.font.TextAttribute;
 import java.time.format.DateTimeFormatter;
@@ -241,32 +246,95 @@ public class App extends JFrame {
             }
         });
 
-        monitor = new ClipboardMonitor(item -> SwingUtilities.invokeLater(() -> {
-            ClipboardTab currentTab = getCurrentTab();
-            // Check if item already exists to prevent duplicates
-            if (!currentTab.items.isEmpty() && currentTab.items.get(0).equals(item)) {
-                return; // Item already exists, skip
-            }
-            currentTab.items.add(0, item);
-
-            // Enforce Max History
-            int max = configManager.getMaxHistory();
-            while (currentTab.items.size() > max) {
-                currentTab.items.remove(currentTab.items.size() - 1);
-            }
-
-            refreshUI();
-            saveClipboardState(); // Save state immediately when new item is added
-            if (tabs.indexOf(currentTab) == activeTabIndex) {
-                animateNewEntry(item);
-            }
-        }));
+        monitor = new ClipboardMonitor(this::addNewItem);
 
         // Save clipboard state when the window is closing
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
                 saveClipboardState();
+            }
+        });
+
+        // Setup Drag and Drop
+        setupDragAndDrop();
+    }
+
+    private void setupDragAndDrop() {
+        new DropTarget(this, DnDConstants.ACTION_COPY, new DropTargetAdapter() {
+            @Override
+            public void drop(DropTargetDropEvent event) {
+                try {
+                    event.acceptDrop(DnDConstants.ACTION_COPY);
+                    Transferable transferable = event.getTransferable();
+
+                    if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                        @SuppressWarnings("unchecked")
+                        List<File> files = (List<File>) transferable.getTransferData(DataFlavor.javaFileListFlavor);
+                        for (File file : files) {
+                            processDroppedFile(file);
+                        }
+                    } else if (transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
+                        BufferedImage img = (BufferedImage) transferable.getTransferData(DataFlavor.imageFlavor);
+                        if (img != null) {
+                            addNewItem(new ClipboardItem(img));
+                        }
+                    } else if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                        String text = (String) transferable.getTransferData(DataFlavor.stringFlavor);
+                        if (text != null && !text.isBlank()) {
+                            addNewItem(new ClipboardItem(text));
+                        }
+                    }
+                    event.dropComplete(true);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    event.dropComplete(false);
+                }
+            }
+        });
+    }
+
+    private void processDroppedFile(File file) {
+        if (file.isDirectory()) return;
+
+        String name = file.getName().toLowerCase();
+        try {
+            if (name.endsWith(".svg")) {
+                String content = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                addNewItem(new ClipboardItem(content));
+            } else if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".gif") || name.endsWith(".bmp")) {
+                BufferedImage img = javax.imageio.ImageIO.read(file);
+                if (img != null) {
+                    addNewItem(new ClipboardItem(img));
+                }
+            } else {
+                // Treat as text if not an image
+                String content = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                addNewItem(new ClipboardItem(content));
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void addNewItem(ClipboardItem item) {
+        SwingUtilities.invokeLater(() -> {
+            ClipboardTab currentTab = getCurrentTab();
+            // Check for duplicates
+            if (!currentTab.items.isEmpty() && currentTab.items.get(0).equals(item)) {
+                return;
+            }
+            currentTab.items.add(0, item);
+
+            int max = configManager.getMaxHistory();
+            while (currentTab.items.size() > max) {
+                currentTab.items.remove(currentTab.items.size() - 1);
+            }
+
+            refreshUI();
+            saveClipboardState();
+            if (tabs.indexOf(currentTab) == activeTabIndex) {
+                animateNewEntry(item);
             }
         });
     }
@@ -748,8 +816,31 @@ public class App extends JFrame {
             });
 
             contentArea.add(preview, BorderLayout.CENTER);
+        } else if (item.getType() == ClipboardItem.Type.SVG) {
+            JLabel preview = new JLabel();
+            preview.setHorizontalAlignment(SwingConstants.CENTER);
+            int maxImgWidth = cardWidth - 40;
+            int maxImgHeight = cardHeight - 80;
+
+            try {
+                byte[] svgBytes = item.getText().getBytes(StandardCharsets.UTF_8);
+                FlatSVGIcon svgIcon = new FlatSVGIcon(new ByteArrayInputStream(svgBytes));
+                
+                // Scale SVG to fit while maintaining aspect ratio
+                float svgWidth = svgIcon.getIconWidth();
+                float svgHeight = svgIcon.getIconHeight();
+                float scale = Math.min(maxImgWidth / svgWidth, maxImgHeight / svgHeight);
+                
+                svgIcon = svgIcon.derive((int)(svgWidth * scale), (int)(svgHeight * scale));
+                preview.setIcon(svgIcon);
+            } catch (Exception e) {
+                preview.setText("Error loading SVG");
+                preview.setForeground(Color.RED);
+            }
+            contentArea.add(preview, BorderLayout.CENTER);
         } else {
             JLabel preview = new JLabel();
+            preview.setHorizontalAlignment(SwingConstants.CENTER);
             int maxImgWidth = cardWidth - 40;
             int maxImgHeight = cardHeight - 80;
             
@@ -774,6 +865,7 @@ public class App extends JFrame {
         String typeStr = "T";
         if (item.getType() == ClipboardItem.Type.IMAGE) typeStr = "I";
         else if (item.getType() == ClipboardItem.Type.URL) typeStr = "U";
+        else if (item.getType() == ClipboardItem.Type.SVG) typeStr = "S";
         
         JLabel typeIndicator = new JLabel(typeStr);
         typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3));
@@ -957,7 +1049,7 @@ public class App extends JFrame {
         details.add(new String[] { "Type", item.getType().toString() });
         details.add(new String[] { "Size", item.getFormattedSize() });
 
-        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL || item.getType() == ClipboardItem.Type.SVG) {
             details.add(new String[] { "Characters", String.valueOf(item.getCharacterCount()) });
             details.add(new String[] { "Words", String.valueOf(item.getWordCount()) });
             details.add(new String[] { "Lines", String.valueOf(item.getLineCount()) });
@@ -1471,7 +1563,7 @@ public class App extends JFrame {
     }
 
     private void copyToSystemClipboard(ClipboardItem item) {
-        if (item.getType() == ClipboardItem.Type.TEXT) {
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL || item.getType() == ClipboardItem.Type.SVG) {
             String text = item.getText();
             StringSelection selection = new StringSelection(text);
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);

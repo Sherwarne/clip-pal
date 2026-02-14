@@ -3,7 +3,10 @@ package com.virtualclipboard;
 import java.awt.*;
 import java.awt.datatransfer.*;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +36,26 @@ public class ClipboardMonitor {
 
             if (contents == null)
                 return;
+
+            if (contents.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                List<File> files = (List<File>) contents.getTransferData(DataFlavor.javaFileListFlavor);
+                if (files != null && !files.isEmpty()) {
+                    File file = files.get(0);
+                    if (file.getName().toLowerCase().endsWith(".svg")) {
+                        try {
+                            String svgContent = Files.readString(file.toPath());
+                            if (!svgContent.equals(lastContent)) {
+                                lastContent = svgContent;
+                                System.out.println("New SVG file detected");
+                                onNewItem.accept(new ClipboardItem(svgContent));
+                            }
+                            return; // Priority given to SVG file over other flavors
+                        } catch (IOException e) {
+                            // Fallback to other flavors if reading fails
+                        }
+                    }
+                }
+            }
 
             if (contents.isDataFlavorSupported(DataFlavor.stringFlavor)) {
                 String text = (String) contents.getTransferData(DataFlavor.stringFlavor);
