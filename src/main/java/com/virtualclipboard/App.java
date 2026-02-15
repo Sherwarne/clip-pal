@@ -302,7 +302,13 @@ public class App extends JFrame {
             if (name.endsWith(".svg")) {
                 String content = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
                 addNewItem(new ClipboardItem(content));
-            } else if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".gif") || name.endsWith(".bmp")) {
+            } else if (name.endsWith(".gif")) {
+                byte[] gifBytes = java.nio.file.Files.readAllBytes(file.toPath());
+                BufferedImage img = javax.imageio.ImageIO.read(new ByteArrayInputStream(gifBytes));
+                if (img != null) {
+                    addNewItem(new ClipboardItem(gifBytes, img.getWidth(), img.getHeight()));
+                }
+            } else if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".bmp")) {
                 BufferedImage img = javax.imageio.ImageIO.read(file);
                 if (img != null) {
                     addNewItem(new ClipboardItem(img));
@@ -838,6 +844,48 @@ public class App extends JFrame {
                 preview.setForeground(Color.RED);
             }
             contentArea.add(preview, BorderLayout.CENTER);
+        } else if (item.getType() == ClipboardItem.Type.GIF) {
+            final ImageIcon icon = new ImageIcon(item.getGifData());
+            JPanel preview = new JPanel() {
+                @Override
+                protected void paintComponent(Graphics g) {
+                    super.paintComponent(g);
+                    Image img = icon.getImage();
+                    if (img == null) return;
+
+                    int iw = icon.getIconWidth();
+                    int ih = icon.getIconHeight();
+                    if (iw <= 0 || ih <= 0) return;
+
+                    int cw = getWidth();
+                    int ch = getHeight();
+                    if (cw <= 0 || ch <= 0) return;
+
+                    double scale = Math.min((double) cw / iw, (double) ch / ih);
+                    int tw = (int) (iw * scale);
+                    int th = (int) (ih * scale);
+
+                    int x = (cw - tw) / 2;
+                    int y = (ch - th) / 2;
+
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                    g2.drawImage(img, x, y, tw, th, this);
+                    g2.dispose();
+                }
+            };
+            preview.setOpaque(false);
+            
+            // Forward mouse events to the card
+            preview.addMouseListener(new MouseAdapter() {
+                @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            });
+
+            contentArea.add(preview, BorderLayout.CENTER);
         } else {
             JLabel preview = new JLabel();
             preview.setHorizontalAlignment(SwingConstants.CENTER);
@@ -857,6 +905,16 @@ public class App extends JFrame {
             
             Image scaled = item.getImage().getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
             preview.setIcon(new ImageIcon(scaled));
+
+            // Forward mouse events to the card
+            preview.addMouseListener(new MouseAdapter() {
+                @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            });
+
             contentArea.add(preview, BorderLayout.CENTER);
         }
         card.add(contentArea, BorderLayout.CENTER);
@@ -866,6 +924,7 @@ public class App extends JFrame {
         if (item.getType() == ClipboardItem.Type.IMAGE) typeStr = "I";
         else if (item.getType() == ClipboardItem.Type.URL) typeStr = "U";
         else if (item.getType() == ClipboardItem.Type.SVG) typeStr = "S";
+        else if (item.getType() == ClipboardItem.Type.GIF) typeStr = "G";
         
         JLabel typeIndicator = new JLabel(typeStr);
         typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3));
@@ -1107,10 +1166,40 @@ public class App extends JFrame {
             JPanel imageContainer = new JPanel(new BorderLayout(10, 10));
             imageContainer.setOpaque(false);
 
-            JLabel imgLabel = new JLabel(new ImageIcon(item.getImage().getScaledInstance(
-                    item.getWidth() > 500 ? 500 : -1,
-                    -1,
-                    Image.SCALE_SMOOTH)));
+            JLabel imgLabel = new JLabel();
+            if (item.getType() == ClipboardItem.Type.GIF) {
+                int imgWidth = item.getWidth();
+                int imgHeight = item.getHeight();
+                ImageIcon icon = new ImageIcon(item.getGifData());
+                
+                if (imgWidth > 500) {
+                    double scale = 500.0 / imgWidth;
+                    int targetWidth = 500;
+                    int targetHeight = (int) (imgHeight * scale);
+                    imgLabel.setIcon(new Icon() {
+                        @Override
+                        public void paintIcon(Component c, Graphics g, int x, int y) {
+                            Graphics2D g2 = (Graphics2D) g.create();
+                            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                            g2.drawImage(icon.getImage(), x, y, targetWidth, targetHeight, c);
+                            g2.dispose();
+                        }
+                        @Override
+                        public int getIconWidth() { return targetWidth; }
+                        @Override
+                        public int getIconHeight() { return targetHeight; }
+                    });
+                    imgLabel.setPreferredSize(new Dimension(targetWidth, targetHeight));
+                } else {
+                    imgLabel.setIcon(icon);
+                    imgLabel.setPreferredSize(new Dimension(imgWidth, imgHeight));
+                }
+            } else {
+                imgLabel.setIcon(new ImageIcon(item.getImage().getScaledInstance(
+                        item.getWidth() > 500 ? 500 : -1,
+                        -1,
+                        Image.SCALE_SMOOTH)));
+            }
             imgLabel.setHorizontalAlignment(JLabel.CENTER);
             imageContainer.add(imgLabel, BorderLayout.CENTER);
 
@@ -1159,7 +1248,7 @@ public class App extends JFrame {
                 new SwingWorker<String, Void>() {
                     @Override
                     protected String doInBackground() throws Exception {
-                        return ocrService.extractText(item.getImage());
+                        return ocrService.extractText(item.getAsImage());
                     }
 
                     @Override
@@ -1205,7 +1294,7 @@ public class App extends JFrame {
                     @Override
                     protected String doInBackground() throws Exception {
                         String engine = configManager.getSearchEngine();
-                        return ocrService.getSearchUrl(item.getImage(), engine);
+                        return ocrService.getSearchUrl(item.getAsImage(), engine);
                     }
 
                     @Override
@@ -1568,8 +1657,11 @@ public class App extends JFrame {
             StringSelection selection = new StringSelection(text);
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
             monitor.updateLastContent(text);
-        } else if (item.getType() == ClipboardItem.Type.IMAGE) {
-            BufferedImage image = item.getImage();
+        } else if (item.getType() == ClipboardItem.Type.IMAGE || item.getType() == ClipboardItem.Type.GIF) {
+            BufferedImage image = item.getAsImage();
+            if (image == null) return;
+            
+            final BufferedImage finalImage = image;
             Transferable imageTransferable = new Transferable() {
                 @Override
                 public DataFlavor[] getTransferDataFlavors() {
@@ -1584,12 +1676,12 @@ public class App extends JFrame {
                 @Override
                 public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {
                     if (isDataFlavorSupported(flavor))
-                        return image;
+                        return finalImage;
                     throw new UnsupportedFlavorException(flavor);
                 }
             };
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(imageTransferable, null);
-            monitor.updateLastContent(image);
+            monitor.updateLastContent(finalImage);
         }
     }
 

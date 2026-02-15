@@ -53,6 +53,21 @@ public class ClipboardMonitor {
                         } catch (IOException e) {
                             // Fallback to other flavors if reading fails
                         }
+                    } else if (file.getName().toLowerCase().endsWith(".gif")) {
+                        try {
+                            byte[] gifBytes = Files.readAllBytes(file.toPath());
+                            if (!(lastContent instanceof byte[]) || !java.util.Arrays.equals(gifBytes, (byte[]) lastContent)) {
+                                lastContent = gifBytes;
+                                System.out.println("New GIF file detected");
+                                BufferedImage img = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(gifBytes));
+                                if (img != null) {
+                                    onNewItem.accept(new ClipboardItem(gifBytes, img.getWidth(), img.getHeight()));
+                                }
+                            }
+                            return;
+                        } catch (IOException e) {
+                            // Fallback
+                        }
                     }
                 }
             }

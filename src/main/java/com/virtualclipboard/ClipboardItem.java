@@ -14,7 +14,7 @@ import java.util.Objects;
 public class ClipboardItem implements Serializable {
     private static final long serialVersionUID = 1L;
     public enum Type {
-        TEXT, IMAGE, URL, SVG
+        TEXT, IMAGE, URL, SVG, GIF
     }
 
     private final Type type;
@@ -22,6 +22,7 @@ public class ClipboardItem implements Serializable {
     private final String urlDomain;
     private final String urlProtocol;
     private transient BufferedImage image;
+    private byte[] gifData;
     private final LocalDateTime timestamp;
     private final long sizeInBytes;
     private final int width;
@@ -39,6 +40,19 @@ public class ClipboardItem implements Serializable {
         if (type == Type.IMAGE) {
             image = ImageIO.read(in);
         }
+    }
+
+    public ClipboardItem(byte[] gifData, int width, int height) {
+        this.type = Type.GIF;
+        this.gifData = gifData;
+        this.image = null;
+        this.text = null;
+        this.urlDomain = null;
+        this.urlProtocol = null;
+        this.timestamp = LocalDateTime.now();
+        this.sizeInBytes = gifData.length;
+        this.width = width;
+        this.height = height;
     }
 
     public ClipboardItem(String text) {
@@ -141,6 +155,22 @@ public class ClipboardItem implements Serializable {
         return image;
     }
 
+    public BufferedImage getAsImage() {
+        if (type == Type.IMAGE) return image;
+        if (type == Type.GIF && gifData != null) {
+            try {
+                return javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(gifData));
+            } catch (java.io.IOException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    public byte[] getGifData() {
+        return gifData;
+    }
+
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
@@ -184,7 +214,7 @@ public class ClipboardItem implements Serializable {
     }
 
     public String getAspectRatio() {
-        if (type != Type.IMAGE || width <= 0 || height <= 0)
+        if ((type != Type.IMAGE && type != Type.GIF) || width <= 0 || height <= 0)
             return "N/A";
 
         int common = gcd(width, height);
