@@ -1,5 +1,10 @@
 package com.virtualclipboard;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
+import java.io.StringReader;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -105,9 +110,38 @@ public class ClipboardItem implements Serializable {
 
     private boolean isSVG(String text) {
         if (text == null || text.isBlank()) return false;
-        String trimmed = text.trim().toLowerCase();
-        // Check for <svg tag. Might be preceded by <?xml...?>
-        return trimmed.contains("<svg") && trimmed.endsWith("</svg>");
+        String trimmed = text.trim();
+        
+        // Fast check: must start with <svg or <?xml and contain <svg
+        if (!trimmed.toLowerCase().contains("<svg")) {
+            return false;
+        }
+
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            // Disable validation and features that might trigger network access
+            factory.setValidating(false);
+            factory.setFeature("http://xml.org/sax/features/validation", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-dtd-grammar", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            // Wrap in try-catch to handle potential parsing errors
+            InputSource is = new InputSource(new StringReader(trimmed));
+            Document doc = builder.parse(is);
+            
+            // Check if root element is svg
+            if (doc.getDocumentElement() != null && 
+                "svg".equalsIgnoreCase(doc.getDocumentElement().getNodeName())) {
+                return true;
+            }
+        } catch (Exception e) {
+            // Parsing failed, not a valid SVG
+            return false;
+        }
+        
+        return false;
     }
 
     private boolean isURL(String text) {
@@ -155,6 +189,10 @@ public class ClipboardItem implements Serializable {
         return image;
     }
 
+    public byte[] getGifData() {
+        return gifData;
+    }
+
     public BufferedImage getAsImage() {
         if (type == Type.IMAGE) return image;
         if (type == Type.GIF && gifData != null) {
@@ -165,10 +203,6 @@ public class ClipboardItem implements Serializable {
             }
         }
         return null;
-    }
-
-    public byte[] getGifData() {
-        return gifData;
     }
 
     public LocalDateTime getTimestamp() {
@@ -260,6 +294,8 @@ public class ClipboardItem implements Serializable {
             return false;
         if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
             return Objects.equals(text, that.text);
+        } else if (type == Type.GIF) {
+            return width == that.width && height == that.height && java.util.Arrays.equals(gifData, that.gifData);
         } else {
             // Simple check for images - compare dimensions and hash
             // (Note: BufferedImage hash is object-based, so this is still mostly identity)
@@ -271,6 +307,8 @@ public class ClipboardItem implements Serializable {
     public int hashCode() {
         if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
             return Objects.hash(type, text);
+        } else if (type == Type.GIF) {
+            return Objects.hash(type, width, height, java.util.Arrays.hashCode(gifData));
         } else {
             // For images, hash is based on type and dimensions (since image itself is not hash-stable)
             return Objects.hash(type, width, height, image);

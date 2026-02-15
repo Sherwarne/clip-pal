@@ -785,65 +785,68 @@ public class App extends JFrame {
         // Content Area
         JPanel contentArea = new JPanel(new BorderLayout());
         contentArea.setOpaque(false);
+        
+        ClipboardItem.Type displayType = item.getType();
 
         if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
-            JTextArea preview = new JTextArea();
-            preview.setLineWrap(true);
-            preview.setWrapStyleWord(true);
-            preview.setEditable(false);
-            preview.setOpaque(false);
-            preview.setFocusable(false);
-            preview.setMargin(new Insets(0, 0, 0, 0));
-            preview.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            
-            if (item.getType() == ClipboardItem.Type.URL) {
-                preview.setForeground(getThemeColor("accent"));
-                Map<TextAttribute, Object> attributes = new HashMap<>();
-                attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
-                preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2).deriveFont(attributes));
-            } else {
-                preview.setForeground(Color.WHITE);
-                preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
-            }
-
-            String text = item.getText().trim();
-            int maxChars = (itemCols * itemRows > 1) ? 600 : 250;
-            if (text.length() > maxChars)
-                text = text.substring(0, maxChars - 3) + "...";
-            preview.setText(text.replace("\n", " "));
-            
-            // Forward mouse events to the card
-            preview.addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            });
-
-            contentArea.add(preview, BorderLayout.CENTER);
+            contentArea.add(createTextPreviewComponent(item, itemCols, itemRows, card), BorderLayout.CENTER);
         } else if (item.getType() == ClipboardItem.Type.SVG) {
-            JLabel preview = new JLabel();
-            preview.setHorizontalAlignment(SwingConstants.CENTER);
-            int maxImgWidth = cardWidth - 40;
-            int maxImgHeight = cardHeight - 80;
-
+            Component previewComponent;
+            boolean isSvgRendered = false;
             try {
                 byte[] svgBytes = item.getText().getBytes(StandardCharsets.UTF_8);
-                FlatSVGIcon svgIcon = new FlatSVGIcon(new ByteArrayInputStream(svgBytes));
+                // Create a temporary file for the SVG content to avoid InputStream issues with FlatSVGIcon
+                File tempFile = File.createTempFile("clipboard_preview_", ".svg");
+                tempFile.deleteOnExit();
+                try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                    fos.write(svgBytes);
+                }
                 
+                FlatSVGIcon svgIcon = new FlatSVGIcon(tempFile);
+                
+                // Validate SVG by forcing a render (catches parser errors early)
+                BufferedImage bi = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2d = bi.createGraphics();
+                try {
+                    svgIcon.paintIcon(new JLabel(), g2d, 0, 0);
+                } finally {
+                    g2d.dispose();
+                }
+
                 // Scale SVG to fit while maintaining aspect ratio
+                JLabel preview = new JLabel();
+                preview.setHorizontalAlignment(SwingConstants.CENTER);
+                int maxImgWidth = cardWidth - 40;
+                int maxImgHeight = cardHeight - 80;
+
                 float svgWidth = svgIcon.getIconWidth();
                 float svgHeight = svgIcon.getIconHeight();
                 float scale = Math.min(maxImgWidth / svgWidth, maxImgHeight / svgHeight);
                 
                 svgIcon = svgIcon.derive((int)(svgWidth * scale), (int)(svgHeight * scale));
                 preview.setIcon(svgIcon);
-            } catch (Exception e) {
-                preview.setText("Error loading SVG");
-                preview.setForeground(Color.RED);
+                
+                // Add mouse listener for consistency
+                preview.addMouseListener(new MouseAdapter() {
+                    @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                    @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                    @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                    @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                    @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                });
+                
+                previewComponent = preview;
+                isSvgRendered = true;
+            } catch (Throwable e) {
+                // Fallback to text preview on any error
+                previewComponent = createTextPreviewComponent(item, itemCols, itemRows, card);
+                isSvgRendered = false;
             }
-            contentArea.add(preview, BorderLayout.CENTER);
+            
+            if (!isSvgRendered) {
+                displayType = ClipboardItem.Type.TEXT;
+            }
+            contentArea.add(previewComponent, BorderLayout.CENTER);
         } else if (item.getType() == ClipboardItem.Type.GIF) {
             final ImageIcon icon = new ImageIcon(item.getGifData());
             JPanel preview = new JPanel() {
@@ -921,10 +924,10 @@ public class App extends JFrame {
 
         // Type Indicator (Bottom Right)
         String typeStr = "T";
-        if (item.getType() == ClipboardItem.Type.IMAGE) typeStr = "I";
-        else if (item.getType() == ClipboardItem.Type.URL) typeStr = "U";
-        else if (item.getType() == ClipboardItem.Type.SVG) typeStr = "S";
-        else if (item.getType() == ClipboardItem.Type.GIF) typeStr = "G";
+        if (displayType == ClipboardItem.Type.IMAGE) typeStr = "I";
+        else if (displayType == ClipboardItem.Type.URL) typeStr = "U";
+        else if (displayType == ClipboardItem.Type.SVG) typeStr = "S";
+        else if (displayType == ClipboardItem.Type.GIF) typeStr = "G";
         
         JLabel typeIndicator = new JLabel(typeStr);
         typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3));
@@ -1081,6 +1084,7 @@ public class App extends JFrame {
             alpha[0] -= 0.1f;
             if (alpha[0] <= 0.0f) {
                 timer.stop();
+                monitor.resetIfCurrent(item);
                 getCurrentTab().items.remove(item); // Fix items.remove()
                 refreshUI();
             }
@@ -1108,7 +1112,7 @@ public class App extends JFrame {
         details.add(new String[] { "Type", item.getType().toString() });
         details.add(new String[] { "Size", item.getFormattedSize() });
 
-        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL || item.getType() == ClipboardItem.Type.SVG) {
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
             details.add(new String[] { "Characters", String.valueOf(item.getCharacterCount()) });
             details.add(new String[] { "Words", String.valueOf(item.getWordCount()) });
             details.add(new String[] { "Lines", String.valueOf(item.getLineCount()) });
@@ -1117,6 +1121,32 @@ public class App extends JFrame {
                 details.add(new String[] { "Domain", item.getUrlDomain() });
                 details.add(new String[] { "Protocol", item.getUrlProtocol() });
             }
+        } else if (item.getType() == ClipboardItem.Type.SVG) {
+            // For SVG, try to show dimensions if renderable, else show text stats
+            boolean isRenderable = false;
+            try {
+                // Quick check if renderable
+                File tempFile = File.createTempFile("clipboard_info_", ".svg");
+                tempFile.deleteOnExit();
+                try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                    fos.write(item.getText().getBytes(StandardCharsets.UTF_8));
+                }
+                FlatSVGIcon svgIcon = new FlatSVGIcon(tempFile);
+                if (svgIcon.getIconWidth() > 0) {
+                     details.add(new String[] { "Dimensions", svgIcon.getIconWidth() + " x " + svgIcon.getIconHeight() });
+                     isRenderable = true;
+                }
+            } catch (Throwable e) {
+                isRenderable = false;
+            }
+            
+            if (!isRenderable) {
+                details.add(new String[] { "Status", "Raw Code (Render Failed)" });
+            }
+            // Always show code stats for SVG as it is code-based
+            details.add(new String[] { "Characters", String.valueOf(item.getCharacterCount()) });
+            details.add(new String[] { "Lines", String.valueOf(item.getLineCount()) });
+            
         } else {
             details.add(new String[] { "Dimensions", item.getWidth() + " x " + item.getHeight() });
             details.add(new String[] { "Aspect Ratio", item.getAspectRatio() });
@@ -1138,7 +1168,33 @@ public class App extends JFrame {
         mainPanel.add(metaPanel, BorderLayout.NORTH);
 
         // Preview
-        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
+        boolean showAsText = item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL;
+        FlatSVGIcon svgIcon = null;
+
+        if (item.getType() == ClipboardItem.Type.SVG) {
+            try {
+                byte[] svgBytes = item.getText().getBytes(StandardCharsets.UTF_8);
+                File tempFile = File.createTempFile("clipboard_popup_", ".svg");
+                tempFile.deleteOnExit();
+                try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                    fos.write(svgBytes);
+                }
+                svgIcon = new FlatSVGIcon(tempFile);
+                
+                // Validate
+                BufferedImage bi = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2d = bi.createGraphics();
+                try {
+                    svgIcon.paintIcon(new JLabel(), g2d, 0, 0);
+                } finally {
+                    g2d.dispose();
+                }
+            } catch (Throwable e) {
+                showAsText = true;
+            }
+        }
+
+        if (showAsText) {
             JTextArea textArea = new JTextArea(item.getText());
             textArea.setEditable(false);
             textArea.setLineWrap(true);
@@ -1167,7 +1223,23 @@ public class App extends JFrame {
             imageContainer.setOpaque(false);
 
             JLabel imgLabel = new JLabel();
-            if (item.getType() == ClipboardItem.Type.GIF) {
+            if (item.getType() == ClipboardItem.Type.SVG) {
+                // Scale SVG to fit
+                int maxWidth = 500;
+                int maxHeight = 400;
+                float iw = svgIcon.getIconWidth();
+                float ih = svgIcon.getIconHeight();
+                float scale = 1.0f;
+                
+                if (iw > maxWidth || ih > maxHeight) {
+                    scale = Math.min((float)maxWidth / iw, (float)maxHeight / ih);
+                }
+                
+                if (scale != 1.0f) {
+                    svgIcon = svgIcon.derive((int)(iw * scale), (int)(ih * scale));
+                }
+                imgLabel.setIcon(svgIcon);
+            } else if (item.getType() == ClipboardItem.Type.GIF) {
                 int imgWidth = item.getWidth();
                 int imgHeight = item.getHeight();
                 ImageIcon icon = new ImageIcon(item.getGifData());
@@ -1194,7 +1266,7 @@ public class App extends JFrame {
                     imgLabel.setIcon(icon);
                     imgLabel.setPreferredSize(new Dimension(imgWidth, imgHeight));
                 }
-            } else {
+            } else if (item.getType() == ClipboardItem.Type.IMAGE) {
                 imgLabel.setIcon(new ImageIcon(item.getImage().getScaledInstance(
                         item.getWidth() > 500 ? 500 : -1,
                         -1,
@@ -1545,6 +1617,44 @@ public class App extends JFrame {
         refreshUI();
     }
 
+    private Component createTextPreviewComponent(ClipboardItem item, int itemCols, int itemRows, JPanel card) {
+        JTextArea preview = new JTextArea();
+        preview.setLineWrap(true);
+        preview.setWrapStyleWord(true);
+        preview.setEditable(false);
+        preview.setOpaque(false);
+        preview.setFocusable(false);
+        preview.setMargin(new Insets(0, 0, 0, 0));
+        preview.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        
+        if (item.getType() == ClipboardItem.Type.URL) {
+            preview.setForeground(getThemeColor("accent"));
+            Map<TextAttribute, Object> attributes = new HashMap<>();
+            attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
+            preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2).deriveFont(attributes));
+        } else {
+            preview.setForeground(Color.WHITE);
+            preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
+        }
+
+        String text = item.getText().trim();
+        int maxChars = (itemCols * itemRows > 1) ? 600 : 250;
+        if (text.length() > maxChars)
+            text = text.substring(0, maxChars - 3) + "...";
+        preview.setText(text.replace("\n", " "));
+        
+        // Forward mouse events to the card
+        MouseAdapter ma = new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+        };
+        preview.addMouseListener(ma);
+        return preview;
+    }
+
     // Custom Component for Opacity Support
     private class AnimatedCard extends JPanel {
         private float alpha = 1.0f;
@@ -1652,11 +1762,73 @@ public class App extends JFrame {
     }
 
     private void copyToSystemClipboard(ClipboardItem item) {
-        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL || item.getType() == ClipboardItem.Type.SVG) {
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
             String text = item.getText();
             StringSelection selection = new StringSelection(text);
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
             monitor.updateLastContent(text);
+        } else if (item.getType() == ClipboardItem.Type.SVG) {
+            // For SVG, try to render it as an image for the clipboard
+            BufferedImage image = null;
+            try {
+                byte[] svgBytes = item.getText().getBytes(StandardCharsets.UTF_8);
+                File tempFile = File.createTempFile("clipboard_copy_", ".svg");
+                tempFile.deleteOnExit();
+                try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                    fos.write(svgBytes);
+                }
+                
+                FlatSVGIcon svgIcon = new FlatSVGIcon(tempFile);
+                int w = svgIcon.getIconWidth();
+                int h = svgIcon.getIconHeight();
+                
+                // If dimensions are too small or invalid, pick a reasonable default
+                if (w <= 0 || h <= 0) { w = 500; h = 500; }
+                
+                // Render to BufferedImage
+                image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2 = image.createGraphics();
+                svgIcon.paintIcon(new JLabel(), g2, 0, 0);
+                g2.dispose();
+                
+            } catch (Throwable e) {
+                // If rendering fails, fallback to text
+                image = null;
+            }
+
+            if (image != null) {
+                final BufferedImage finalImage = image;
+                Transferable imageTransferable = new Transferable() {
+                    @Override
+                    public DataFlavor[] getTransferDataFlavors() {
+                        return new DataFlavor[] { DataFlavor.imageFlavor, DataFlavor.stringFlavor };
+                    }
+
+                    @Override
+                    public boolean isDataFlavorSupported(DataFlavor flavor) {
+                        return DataFlavor.imageFlavor.equals(flavor) || DataFlavor.stringFlavor.equals(flavor);
+                    }
+
+                    @Override
+                    public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException, IOException {
+                        if (DataFlavor.imageFlavor.equals(flavor)) {
+                            return finalImage;
+                        } else if (DataFlavor.stringFlavor.equals(flavor)) {
+                            return item.getText();
+                        }
+                        throw new UnsupportedFlavorException(flavor);
+                    }
+                };
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(imageTransferable, null);
+                monitor.updateLastContent(item.getText());
+            } else {
+                // Fallback to text copy
+                String text = item.getText();
+                StringSelection selection = new StringSelection(text);
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
+                monitor.updateLastContent(text);
+            }
+
         } else if (item.getType() == ClipboardItem.Type.IMAGE || item.getType() == ClipboardItem.Type.GIF) {
             BufferedImage image = item.getAsImage();
             if (image == null) return;

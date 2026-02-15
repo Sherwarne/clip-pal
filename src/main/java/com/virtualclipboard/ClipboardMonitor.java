@@ -25,6 +25,39 @@ public class ClipboardMonitor {
         this.lastContent = content;
     }
 
+    public void resetIfCurrent(ClipboardItem item) {
+        if (item == null || lastContent == null) return;
+
+        boolean match = false;
+        
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL || item.getType() == ClipboardItem.Type.SVG) {
+            if (lastContent instanceof String && item.getText().equals(lastContent)) {
+                match = true;
+            }
+        } else if (item.getType() == ClipboardItem.Type.GIF) {
+            if (lastContent instanceof byte[] && java.util.Arrays.equals(item.getGifData(), (byte[]) lastContent)) {
+                match = true;
+            }
+        } else if (item.getType() == ClipboardItem.Type.IMAGE) {
+            if (lastContent instanceof BufferedImage) {
+                match = imagesAreEqual(item.getAsImage(), (BufferedImage) lastContent);
+            }
+        }
+
+        if (match) {
+             lastContent = null;
+             try {
+                 Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new Transferable() {
+                     public DataFlavor[] getTransferDataFlavors() { return new DataFlavor[0]; }
+                     public boolean isDataFlavorSupported(DataFlavor flavor) { return false; }
+                     public Object getTransferData(DataFlavor flavor) { return null; }
+                 }, null);
+             } catch (Exception e) {
+                 // Ignore if we can't clear clipboard
+             }
+        }
+    }
+
     public void start() {
         scheduler.scheduleAtFixedRate(this::checkClipboard, 0, 500, TimeUnit.MILLISECONDS);
     }
