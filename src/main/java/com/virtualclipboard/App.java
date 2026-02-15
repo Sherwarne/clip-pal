@@ -780,7 +780,7 @@ public class App extends JFrame {
         JPanel contentArea = new JPanel(new BorderLayout());
         contentArea.setOpaque(false);
 
-        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
+        if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL || item.getType() == ClipboardItem.Type.CODE) {
             JTextArea preview = new JTextArea();
             preview.setLineWrap(true);
             preview.setWrapStyleWord(true);
@@ -795,6 +795,9 @@ public class App extends JFrame {
                 Map<TextAttribute, Object> attributes = new HashMap<>();
                 attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
                 preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2).deriveFont(attributes));
+            } else if (item.getType() == ClipboardItem.Type.CODE) {
+                preview.setForeground(new Color(156, 220, 254)); // Light blue for code
+                preview.setFont(getAppFont("Consolas", Font.PLAIN, configManager.getFontSize() + 1));
             } else {
                 preview.setForeground(Color.WHITE);
                 preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
@@ -866,8 +869,12 @@ public class App extends JFrame {
         if (item.getType() == ClipboardItem.Type.IMAGE) typeStr = "I";
         else if (item.getType() == ClipboardItem.Type.URL) typeStr = "U";
         else if (item.getType() == ClipboardItem.Type.SVG) typeStr = "S";
+        else if (item.getType() == ClipboardItem.Type.CODE) typeStr = "C";
         
         JLabel typeIndicator = new JLabel(typeStr);
+        if (item.getType() == ClipboardItem.Type.CODE) {
+            typeIndicator.setToolTipText("Language: " + item.getCodeLanguage());
+        }
         typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3));
         typeIndicator.setForeground(new Color(110, 110, 125, 150));
 

@@ -14,13 +14,14 @@ import java.util.Objects;
 public class ClipboardItem implements Serializable {
     private static final long serialVersionUID = 1L;
     public enum Type {
-        TEXT, IMAGE, URL, SVG
+        TEXT, IMAGE, URL, SVG, CODE
     }
 
     private final Type type;
     private final String text;
     private final String urlDomain;
     private final String urlProtocol;
+    private final String codeLanguage;
     private transient BufferedImage image;
     private final LocalDateTime timestamp;
     private final long sizeInBytes;
@@ -54,12 +55,15 @@ public class ClipboardItem implements Serializable {
         this.width = -1;
         this.height = -1;
 
+        String detectedLang = CodeDetector.detectLanguage(processedText);
         if (isSVG(processedText)) {
             this.type = Type.SVG;
             this.urlDomain = null;
             this.urlProtocol = null;
+            this.codeLanguage = null;
         } else if (isURL(processedText)) {
             this.type = Type.URL;
+            this.codeLanguage = null;
             String domain = "N/A";
             String protocol = "N/A";
             try {
@@ -72,10 +76,16 @@ public class ClipboardItem implements Serializable {
             }
             this.urlDomain = domain;
             this.urlProtocol = protocol;
+        } else if (detectedLang != null) {
+            this.type = Type.CODE;
+            this.codeLanguage = detectedLang;
+            this.urlDomain = null;
+            this.urlProtocol = null;
         } else {
             this.type = Type.TEXT;
             this.urlDomain = null;
             this.urlProtocol = null;
+            this.codeLanguage = null;
         }
     }
 
@@ -117,12 +127,17 @@ public class ClipboardItem implements Serializable {
         return urlProtocol;
     }
 
+    public String getCodeLanguage() {
+        return codeLanguage;
+    }
+
     public ClipboardItem(BufferedImage image) {
         this.type = Type.IMAGE;
         this.image = image;
         this.text = null;
         this.urlDomain = null;
         this.urlProtocol = null;
+        this.codeLanguage = null;
         this.timestamp = LocalDateTime.now();
         this.sizeInBytes = (long) image.getWidth() * image.getHeight() * 4; // Approx size for RGBA
         this.width = image.getWidth();
@@ -166,19 +181,19 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getWordCount() {
-        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG) || text == null || text.isBlank())
+        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG && type != Type.CODE) || text == null || text.isBlank())
             return 0;
         return text.trim().split("\\s+").length;
     }
 
     public int getLineCount() {
-        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG) || text == null || text.isEmpty())
+        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG && type != Type.CODE) || text == null || text.isEmpty())
             return 0;
         return (int) text.lines().count();
     }
 
     public int getCharacterCount() {
-        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG) || text == null)
+        if ((type != Type.TEXT && type != Type.URL && type != Type.SVG && type != Type.CODE) || text == null)
             return 0;
         return text.length();
     }
@@ -196,7 +211,7 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getRows() {
-        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG || type == Type.CODE) {
             if (getCharacterCount() > 500 || getLineCount() > 10) return 2;
             return 1;
         } else {
@@ -208,7 +223,7 @@ public class ClipboardItem implements Serializable {
     }
 
     public int getCols() {
-        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG || type == Type.CODE) {
             if (getCharacterCount() > 150 || getLineCount() > 4) return 2;
             return 1;
         } else {
@@ -228,7 +243,7 @@ public class ClipboardItem implements Serializable {
         ClipboardItem that = (ClipboardItem) o;
         if (type != that.type)
             return false;
-        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG || type == Type.CODE) {
             return Objects.equals(text, that.text);
         } else {
             // Simple check for images - compare dimensions and hash
@@ -239,7 +254,7 @@ public class ClipboardItem implements Serializable {
 
     @Override
     public int hashCode() {
-        if (type == Type.TEXT || type == Type.URL || type == Type.SVG) {
+        if (type == Type.TEXT || type == Type.URL || type == Type.SVG || type == Type.CODE) {
             return Objects.hash(type, text);
         } else {
             // For images, hash is based on type and dimensions (since image itself is not hash-stable)
@@ -252,7 +267,7 @@ public class ClipboardItem implements Serializable {
             return false;
         if (this.type != other.type)
             return false;
-        if (this.type == Type.TEXT || this.type == Type.URL || this.type == Type.SVG) {
+        if (this.type == Type.TEXT || this.type == Type.URL || this.type == Type.SVG || this.type == Type.CODE) {
             return this.text.equals(other.text);
         } else {
             // For images, we should ideally compare pixel data, but references might be
