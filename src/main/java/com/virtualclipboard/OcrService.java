@@ -77,7 +77,7 @@ public class OcrService {
     private String getGoogleSearchUrl(String imageUrl) throws IOException {
         try {
             String encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8");
-            return "https://www.google.com/searchbyimage?image_url=" + encodedUrl;
+            return "https://lens.google.com/uploadbyurl?url=" + encodedUrl;
         } catch (Exception e) {
             throw new IOException("Failed to encode URL for Google", e);
         }
@@ -146,7 +146,7 @@ public class OcrService {
     private String getBingSearchUrl(String imageUrl) throws IOException {
         try {
             String encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8");
-            return "https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:" + encodedUrl;
+            return "https://www.bing.com/images/search?view=detailv2&iss=sbi&form=SBIVSP&sbisrc=UrlPaste&q=imgurl:" + encodedUrl;
         } catch (Exception e) {
             throw new IOException("Failed to encode URL for Bing", e);
         }

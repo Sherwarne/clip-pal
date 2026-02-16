@@ -251,13 +251,32 @@ public class App extends JFrame {
         }
         
         private JButton createTabButton(ClipboardTab tab, int index, boolean isActive) {
-            JButton tabBtn = new JButton(tab.name);
+            JButton tabBtn = new JButton();
+            if (tab.iconValue != null) {
+                if (tab.isEmoji) {
+                    tabBtn.setText(tab.iconValue + " " + tab.name);
+                } else {
+                    FlatSVGIcon icon = new FlatSVGIcon(tab.iconValue, 16, 16);
+                    if (isActive) {
+                        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+                    } else {
+                        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+                    }
+                    tabBtn.setIcon(icon);
+                    tabBtn.setText(tab.name);
+                    tabBtn.setIconTextGap(8);
+                }
+            } else {
+                tabBtn.setText(tab.name);
+            }
+
             tabBtn.setFont(getAppFont(FONT_FAMILY_TEXT, isActive ? Font.BOLD : Font.PLAIN, 14));
             tabBtn.setForeground(isActive ? Color.WHITE : new Color(110, 110, 125));
             tabBtn.setContentAreaFilled(false); 
             tabBtn.setFocusPainted(false);
             tabBtn.setBorder(new EmptyBorder(5, 12, 5, 12));
             tabBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            tabBtn.setHorizontalAlignment(SwingConstants.CENTER);
             
             // Click handler logic is now in mouseReleased to avoid conflict with drag
             /*
@@ -273,6 +292,57 @@ public class App extends JFrame {
             
             // Context menu logic
             JPopupMenu tabMenu = new JPopupMenu();
+            
+            JMenuItem changeIconItem = new JMenuItem("Change Icon...");
+            changeIconItem.addActionListener(e -> showIconSelector(tab));
+            tabMenu.add(changeIconItem);
+            
+            // Sort Options
+            JMenu sortMenu = new JMenu("Sort by...");
+            
+            JMenuItem sortDateNewOld = new JMenuItem("Date (Newest First)");
+            sortDateNewOld.addActionListener(e -> {
+                sortItems(tab, (a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
+            });
+            sortMenu.add(sortDateNewOld);
+
+            JMenuItem sortDateOldNew = new JMenuItem("Date (Oldest First)");
+            sortDateOldNew.addActionListener(e -> {
+                sortItems(tab, (a, b) -> a.getTimestamp().compareTo(b.getTimestamp()));
+            });
+            sortMenu.add(sortDateOldNew);
+
+            sortMenu.addSeparator();
+
+            JMenuItem sortTypeAZ = new JMenuItem("Type (A-Z)");
+            sortTypeAZ.addActionListener(e -> {
+                sortItems(tab, (a, b) -> a.getType().toString().compareTo(b.getType().toString()));
+            });
+            sortMenu.add(sortTypeAZ);
+            
+            JMenuItem sortTypeZA = new JMenuItem("Type (Z-A)");
+            sortTypeZA.addActionListener(e -> {
+                sortItems(tab, (a, b) -> b.getType().toString().compareTo(a.getType().toString()));
+            });
+            sortMenu.add(sortTypeZA);
+
+            sortMenu.addSeparator();
+
+            JMenuItem sortSizeSmallLarge = new JMenuItem("Size (Smallest First)");
+            sortSizeSmallLarge.addActionListener(e -> {
+                sortItems(tab, (a, b) -> Long.compare(a.getSizeInBytes(), b.getSizeInBytes()));
+            });
+            sortMenu.add(sortSizeSmallLarge);
+
+            JMenuItem sortSizeLargeSmall = new JMenuItem("Size (Largest First)");
+            sortSizeLargeSmall.addActionListener(e -> {
+                sortItems(tab, (a, b) -> Long.compare(b.getSizeInBytes(), a.getSizeInBytes()));
+            });
+            sortMenu.add(sortSizeLargeSmall);
+
+            tabMenu.add(sortMenu);
+            tabMenu.addSeparator();
+
             JMenuItem renameItem = new JMenuItem("Rename Tab");
             renameItem.addActionListener(e -> {
                 String newName = JOptionPane.showInputDialog(App.this, "Enter new tab name:", tab.name);
@@ -386,6 +456,8 @@ public class App extends JFrame {
         private static final long serialVersionUID = 1L;
         String name;
         List<ClipboardItem> items = new ArrayList<>();
+        String iconValue; // Path to SVG or Emoji text
+        boolean isEmoji;
 
         public ClipboardTab(String name) {
             this.name = name;
@@ -465,7 +537,7 @@ public class App extends JFrame {
         searchField.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
 
         // Add a placeholder-like behavior or just a label
-        FlatSVGIcon searchIcon = new FlatSVGIcon("com/virtualclipboard/icons/search.svg", 16, 16);
+        FlatSVGIcon searchIcon = new FlatSVGIcon("com/virtualclipboard/icons/tabs/search.svg", 16, 16);
         searchIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
         JLabel searchIconLabel = new JLabel(searchIcon);
         searchIconLabel.setBorder(new EmptyBorder(0, 0, 0, 10));
@@ -541,7 +613,7 @@ public class App extends JFrame {
                     });
         });
 
-        FlatSVGIcon settingsIcon = new FlatSVGIcon("com/virtualclipboard/icons/settings.svg", 24, 24);
+        FlatSVGIcon settingsIcon = new FlatSVGIcon("com/virtualclipboard/icons/tabs/settings.svg", 24, 24);
         settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
         JButton settingsButton = new JButton(settingsIcon);
         settingsButton.setToolTipText("Settings");
@@ -670,6 +742,13 @@ public class App extends JFrame {
         }
     }
 
+    private void sortItems(ClipboardTab tab, java.util.Comparator<ClipboardItem> comparator) {
+        tab.items.sort(comparator);
+        if (tabs.indexOf(tab) == activeTabIndex) {
+            refreshUI();
+        }
+    }
+
     private void addNewItem(ClipboardItem item) {
         SwingUtilities.invokeLater(() -> {
             ClipboardTab currentTab = getCurrentTab();
@@ -678,6 +757,10 @@ public class App extends JFrame {
                 return;
             }
             currentTab.items.add(0, item);
+
+            if (configManager.isAutoSortByDate()) {
+                sortItems(currentTab, (a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
+            }
 
             int max = configManager.getMaxHistory();
             while (currentTab.items.size() > max) {
@@ -903,7 +986,11 @@ public class App extends JFrame {
                 if (!list.isEmpty() && list.get(0) instanceof ClipboardTab) {
                     tabs.clear();
                     for (Object obj : list) {
-                        tabs.add((ClipboardTab) obj);
+                        ClipboardTab tab = (ClipboardTab) obj;
+                        if (configManager.isAutoSortByDate()) {
+                            tab.items.sort((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
+                        }
+                        tabs.add(tab);
                     }
                     if (loadedActiveIndex >= 0 && loadedActiveIndex < tabs.size()) {
                         activeTabIndex = loadedActiveIndex;
@@ -997,7 +1084,7 @@ public class App extends JFrame {
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         controlPanel.setOpaque(false);
 
-        JButton infoBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/info.svg", 16, 16));
+        JButton infoBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/tabs/info.svg", 16, 16));
         JButton deleteBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/close.svg", 16, 16));
 
         infoBtn.addActionListener(e -> showInfoPopup(item));
@@ -1268,6 +1355,187 @@ public class App extends JFrame {
         return btn;
     }
 
+    private void showIconSelector(ClipboardTab tab) {
+        JDialog dialog = new JDialog(this, "Select Icon", true);
+        dialog.setSize(440, 520);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(new Color(18, 18, 20));
+
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        tabs.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
+
+        // Icons Panel
+        JPanel iconsPanel = new JPanel(new GridLayout(0, 5, 15, 15));
+        iconsPanel.setOpaque(false);
+        iconsPanel.setBorder(new EmptyBorder(25, 25, 25, 25));
+        
+        String[] iconNames = {
+            "home", "work", "star", "heart", "code", "chat", "search", "settings", 
+            "info", "edit", "image", "folder", "link", "check", "music", "video",
+            "document", "download", "upload", "cloud", "mail", "calendar", "user", 
+            "lock", "globe", "bookmark", "clipboard", "console", "chart", "game"
+        };
+        for (String name : iconNames) {
+            String path = "com/virtualclipboard/icons/tabs/" + name + ".svg";
+            JButton btn = createIconSelectorButton(path, 28);
+            btn.addActionListener(e -> {
+                tab.iconValue = path;
+                tab.isEmoji = false;
+                saveClipboardState();
+                refreshTabsUI();
+                dialog.dispose();
+            });
+            iconsPanel.add(btn);
+        }
+        
+        JPanel iconsWrapper = new JPanel(new BorderLayout());
+        iconsWrapper.setOpaque(false);
+        JScrollPane iconsScroll = new JScrollPane(iconsPanel);
+        iconsScroll.setOpaque(false);
+        iconsScroll.getViewport().setOpaque(false);
+        iconsScroll.setBorder(null);
+        iconsWrapper.add(iconsScroll, BorderLayout.CENTER);
+        tabs.addTab("Icons", iconsWrapper);
+
+        // Emojis Panel
+        JPanel emojisPanel = new JPanel(new GridLayout(0, 5, 10, 10));
+        emojisPanel.setOpaque(false);
+        emojisPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        
+        String[] emojis = {"😀", "😂", "😍", "🚀", "💡", "🔥", "👍", "🎉", "📅", "✅", "⚡", "💻", "🎮", "🎵", "📷", "🍔", "🍺", "✈️", "🏠", "❤️"};
+        for (String emoji : emojis) {
+            JButton btn = new JButton(emoji);
+            btn.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 28));
+            btn.setForeground(new Color(220, 220, 220));
+            btn.setContentAreaFilled(false);
+            btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
+            btn.setFocusPainted(false);
+            btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            btn.setPreferredSize(new Dimension(50, 50));
+            
+            btn.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    btn.setBorder(new LineBorder(new Color(80, 80, 90), 1, true));
+                    btn.setForeground(Color.WHITE);
+                }
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
+                    btn.setForeground(new Color(220, 220, 220));
+                }
+            });
+
+            btn.addActionListener(e -> {
+                tab.iconValue = emoji;
+                tab.isEmoji = true;
+                saveClipboardState();
+                refreshTabsUI();
+                dialog.dispose();
+            });
+            emojisPanel.add(btn);
+        }
+        
+        JPanel emojisWrapper = new JPanel(new BorderLayout());
+        emojisWrapper.setOpaque(false);
+        JScrollPane emojisScroll = new JScrollPane(emojisPanel);
+        emojisScroll.setOpaque(false);
+        emojisScroll.getViewport().setOpaque(false);
+        emojisScroll.setBorder(null);
+        emojisWrapper.add(emojisScroll, BorderLayout.CENTER);
+        tabs.addTab("Emojis", emojisWrapper);
+
+        // Custom Input Panel
+        JPanel customPanel = new JPanel(new BorderLayout(15, 15));
+        customPanel.setOpaque(false);
+        customPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        
+        JTextField customField = new JTextField();
+        customField.putClientProperty("JTextField.placeholderText", "Enter custom emoji or text...");
+        customField.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        customField.putClientProperty("JTextField.showClearButton", true);
+        
+        JButton setBtn = new JButton("Apply Custom");
+        setBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        setBtn.setBackground(new Color(50, 50, 55));
+        setBtn.setForeground(Color.WHITE);
+        setBtn.setFocusPainted(false);
+        setBtn.addActionListener(e -> {
+            String text = customField.getText().trim();
+            if (!text.isEmpty()) {
+                tab.iconValue = text;
+                tab.isEmoji = true;
+                saveClipboardState();
+                refreshTabsUI();
+                dialog.dispose();
+            }
+        });
+
+        JButton removeBtn = new JButton("Remove Icon");
+        removeBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        removeBtn.setBackground(new Color(50, 20, 20));
+        removeBtn.setForeground(new Color(255, 100, 100));
+        removeBtn.setFocusPainted(false);
+        removeBtn.addActionListener(e -> {
+            tab.iconValue = null;
+            tab.isEmoji = false;
+            saveClipboardState();
+            refreshTabsUI();
+            dialog.dispose();
+        });
+
+        JPanel btnPanel = new JPanel(new GridLayout(1, 2, 15, 0));
+        btnPanel.setOpaque(false);
+        btnPanel.add(setBtn);
+        btnPanel.add(removeBtn);
+
+        customPanel.add(customField, BorderLayout.NORTH);
+        customPanel.add(btnPanel, BorderLayout.SOUTH);
+        
+        // Combine Custom Panel with a label explanation or just add it to dialog
+        JPanel bottomContainer = new JPanel(new BorderLayout());
+        bottomContainer.setOpaque(false);
+        bottomContainer.add(customPanel, BorderLayout.NORTH);
+        
+        dialog.add(tabs, BorderLayout.CENTER);
+        dialog.add(bottomContainer, BorderLayout.SOUTH);
+        
+        dialog.setVisible(true);
+    }
+
+    private JButton createIconSelectorButton(String iconPath, int size) {
+        FlatSVGIcon icon = new FlatSVGIcon(iconPath, size, size);
+        Color defaultColor = new Color(160, 160, 170);
+        Color hoverColor = Color.WHITE;
+        
+        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> defaultColor));
+        
+        JButton btn = new JButton(icon);
+        btn.setPreferredSize(new Dimension(60, 60));
+        btn.setContentAreaFilled(false);
+        btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
+        btn.setFocusPainted(false);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        
+        btn.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> hoverColor));
+                btn.setBorder(new LineBorder(new Color(80, 80, 90), 1, true));
+                btn.repaint();
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> defaultColor));
+                btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
+                btn.repaint();
+            }
+        });
+        return btn;
+    }
+
     private void deleteEntry(ClipboardItem item, AnimatedCard card) {
         monitor.resetIfCurrent(item);
         getCurrentTab().items.remove(item);
@@ -1420,31 +1688,10 @@ public class App extends JFrame {
                 }
                 imgLabel.setIcon(svgIcon);
             } else if (item.getType() == ClipboardItem.Type.GIF) {
-                int imgWidth = item.getWidth();
-                int imgHeight = item.getHeight();
-                ImageIcon icon = new ImageIcon(item.getGifData());
-                
-                if (imgWidth > 500) {
-                    double scale = 500.0 / imgWidth;
-                    int targetWidth = 500;
-                    int targetHeight = (int) (imgHeight * scale);
-                    imgLabel.setIcon(new Icon() {
-                        @Override
-                        public void paintIcon(Component c, Graphics g, int x, int y) {
-                            Graphics2D g2 = (Graphics2D) g.create();
-                            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                            g2.drawImage(icon.getImage(), x, y, targetWidth, targetHeight, c);
-                            g2.dispose();
-                        }
-                        @Override
-                        public int getIconWidth() { return targetWidth; }
-                        @Override
-                        public int getIconHeight() { return targetHeight; }
-                    });
-                    imgLabel.setPreferredSize(new Dimension(targetWidth, targetHeight));
-                } else {
+                // Use standard ImageIcon to preserve animation
+                if (item.getGifData() != null) {
+                    ImageIcon icon = new ImageIcon(item.getGifData());
                     imgLabel.setIcon(icon);
-                    imgLabel.setPreferredSize(new Dimension(imgWidth, imgHeight));
                 }
             } else if (item.getType() == ClipboardItem.Type.IMAGE) {
                 imgLabel.setIcon(new ImageIcon(item.getImage().getScaledInstance(
@@ -1453,7 +1700,22 @@ public class App extends JFrame {
                         Image.SCALE_SMOOTH)));
             }
             imgLabel.setHorizontalAlignment(JLabel.CENTER);
-            imageContainer.add(imgLabel, BorderLayout.CENTER);
+
+            JComponent centerComponent = imgLabel;
+            // Wrap large GIFs in a ScrollPane to allow viewing without breaking animation via scaling
+            if (item.getType() == ClipboardItem.Type.GIF && (item.getWidth() > 500 || item.getHeight() > 400)) {
+                JScrollPane scroll = new JScrollPane(imgLabel);
+                scroll.setBorder(BorderFactory.createEmptyBorder());
+                scroll.getViewport().setOpaque(false);
+                scroll.setOpaque(false);
+                scroll.setPreferredSize(new Dimension(
+                    Math.min(500, item.getWidth() + 30), 
+                    Math.min(400, item.getHeight() + 30)
+                ));
+                centerComponent = scroll;
+            }
+
+            imageContainer.add(centerComponent, BorderLayout.CENTER);
 
             // OCR Action Panel
             JPanel ocrPanel = new JPanel(new BorderLayout(10, 10));
@@ -1663,9 +1925,13 @@ public class App extends JFrame {
         // Switches
         JCheckBox incognitoCheck = createSettingCheckbox("Use Incognito Mode", configManager.isIncognito(), textPrimary);
         JCheckBox autoStartCheck = createSettingCheckbox("Start with Windows", configManager.isAutoStart(), textPrimary);
+        JCheckBox autoSortCheck = createSettingCheckbox("Auto-sort by Date (Newest First)", configManager.isAutoSortByDate(), textPrimary);
+
         contentPanel.add(incognitoCheck);
         contentPanel.add(Box.createVerticalStrut(10));
         contentPanel.add(autoStartCheck);
+        contentPanel.add(Box.createVerticalStrut(10));
+        contentPanel.add(autoSortCheck);
         contentPanel.add(Box.createVerticalStrut(40));
 
         // Action Buttons
@@ -1689,6 +1955,15 @@ public class App extends JFrame {
             configManager.setMaxHistory((Integer) historyCombo.getSelectedItem());
             configManager.setIncognito(incognitoCheck.isSelected());
             configManager.setAutoStart(autoStartCheck.isSelected());
+            configManager.setAutoSortByDate(autoSortCheck.isSelected());
+            
+            if (configManager.isAutoSortByDate()) {
+                 for (ClipboardTab t : tabs) {
+                     t.items.sort((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
+                 }
+                 refreshUI();
+            }
+
             configManager.save();
             applySettings();
             dialog.dispose();

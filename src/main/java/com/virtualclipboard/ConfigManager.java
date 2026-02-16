@@ -85,4 +85,12 @@ public class ConfigManager {
     public void setAutoStart(boolean enabled) {
         properties.setProperty("autoStart", String.valueOf(enabled));
     }
+
+    public boolean isAutoSortByDate() {
+        return Boolean.parseBoolean(properties.getProperty("autoSortByDate", "true"));
+    }
+
+    public void setAutoSortByDate(boolean enabled) {
+        properties.setProperty("autoSortByDate", String.valueOf(enabled));
+    }
 }
