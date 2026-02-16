@@ -84,7 +84,7 @@ public class App extends JFrame {
             if (activeTabIndex >= 0 && activeTabIndex < tabButtons.size()) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(45, 45, 52));
+                g2.setColor(getThemeColor("inputBackground"));
                 g2.fillRoundRect(highlightBounds.x, highlightBounds.y, highlightBounds.width, highlightBounds.height, 10, 10);
                 g2.dispose();
             }
@@ -258,9 +258,9 @@ public class App extends JFrame {
                 } else {
                     FlatSVGIcon icon = new FlatSVGIcon(tab.iconValue, 16, 16);
                     if (isActive) {
-                        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+                        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textPrimary")));
                     } else {
-                        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+                        icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
                     }
                     tabBtn.setIcon(icon);
                     tabBtn.setText(tab.name);
@@ -271,7 +271,7 @@ public class App extends JFrame {
             }
 
             tabBtn.setFont(getAppFont(FONT_FAMILY_TEXT, isActive ? Font.BOLD : Font.PLAIN, 14));
-            tabBtn.setForeground(isActive ? Color.WHITE : new Color(110, 110, 125));
+            tabBtn.setForeground(isActive ? getThemeColor("textPrimary") : getThemeColor("textSecondary"));
             tabBtn.setContentAreaFilled(false); 
             tabBtn.setFocusPainted(false);
             tabBtn.setBorder(new EmptyBorder(5, 12, 5, 12));
@@ -472,6 +472,14 @@ public class App extends JFrame {
     private JTextField searchField;
     private JComboBox<String> searchScopeCombo;
     private String searchQuery = "";
+    
+    // UI Components that need theme updates
+    private JLabel titleLabel;
+    private FlatSVGIcon searchIcon;
+    private FlatSVGIcon trashIcon;
+    private JButton clearButton;
+    private FlatSVGIcon settingsIcon;
+    private JButton settingsButton;
 
     private OcrService ocrService;
     private ConfigManager configManager = new ConfigManager();
@@ -494,7 +502,7 @@ public class App extends JFrame {
         setMinimumSize(new Dimension(500, 600));
         setLocationRelativeTo(null);
 
-        Color bgMain = new Color(18, 18, 20);
+        Color bgMain = getThemeColor("bgMain");
 
         setLayout(new BorderLayout());
         getContentPane().setBackground(bgMain);
@@ -514,9 +522,9 @@ public class App extends JFrame {
         brandPanel.add(logoLabel);
 
         // App Name
-        JLabel titleLabel = new JLabel("Clip-Pal");
+        titleLabel = new JLabel("Clip-Pal");
         titleLabel.setFont(getAppFont("Segoe UI Variable Display Semibold", Font.BOLD, 42));
-        titleLabel.setForeground(Color.WHITE);
+        titleLabel.setForeground(getThemeColor("textPrimary"));
         brandPanel.add(titleLabel);
 
         headerPanel.add(brandPanel, BorderLayout.WEST);
@@ -528,17 +536,17 @@ public class App extends JFrame {
 
         searchField = new JTextField();
         searchField.setPreferredSize(new Dimension(200, 35));
-        searchField.setBackground(new Color(45, 45, 52));
-        searchField.setForeground(Color.WHITE);
-        searchField.setCaretColor(Color.WHITE);
+        searchField.setBackground(getThemeColor("inputBackground"));
+        searchField.setForeground(getThemeColor("inputText"));
+        searchField.setCaretColor(getThemeColor("inputText"));
         searchField.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(60, 60, 70), 1, true),
+                BorderFactory.createLineBorder(getThemeColor("textSecondary"), 1, true),
                 new EmptyBorder(5, 10, 5, 10)));
         searchField.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
 
         // Add a placeholder-like behavior or just a label
-        FlatSVGIcon searchIcon = new FlatSVGIcon("com/virtualclipboard/icons/tabs/search.svg", 16, 16);
-        searchIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+        searchIcon = new FlatSVGIcon("com/virtualclipboard/icons/tabs/search.svg", 16, 16);
+        searchIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
         JLabel searchIconLabel = new JLabel(searchIcon);
         searchIconLabel.setBorder(new EmptyBorder(0, 0, 0, 10));
 
@@ -550,7 +558,7 @@ public class App extends JFrame {
             }
         });
 
-        searchScopeCombo = new JComboBox<>(new String[] { "Current Tab", "All Tabs" });
+        searchScopeCombo = createStyledComboBox(new String[] { "Current Tab", "All Tabs" }, "Current Tab");
         searchScopeCombo.setPreferredSize(new Dimension(120, 35));
         searchScopeCombo.addActionListener(e -> refreshUI());
 
@@ -580,10 +588,10 @@ public class App extends JFrame {
         headerPanel.add(centerHeader, BorderLayout.CENTER);
         headerPanel.add(searchPanel, BorderLayout.SOUTH);
 
-        FlatSVGIcon trashIcon = new FlatSVGIcon("com/virtualclipboard/icons/trashcan.svg", 24, 24);
-        trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+        trashIcon = new FlatSVGIcon("com/virtualclipboard/icons/trashcan.svg", 24, 24);
+        trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
 
-        JButton clearButton = new JButton(trashIcon);
+        clearButton = new JButton(trashIcon);
         clearButton.setToolTipText("Clear History");
         clearButton.setOpaque(false);
         clearButton.setContentAreaFilled(false);
@@ -600,7 +608,7 @@ public class App extends JFrame {
 
             @Override
             public void mouseExited(MouseEvent e) {
-                trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+                trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
                 clearButton.repaint();
             }
         });
@@ -613,9 +621,9 @@ public class App extends JFrame {
                     });
         });
 
-        FlatSVGIcon settingsIcon = new FlatSVGIcon("com/virtualclipboard/icons/tabs/settings.svg", 24, 24);
-        settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
-        JButton settingsButton = new JButton(settingsIcon);
+        settingsIcon = new FlatSVGIcon("com/virtualclipboard/icons/tabs/settings.svg", 24, 24);
+        settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
+        settingsButton = new JButton(settingsIcon);
         settingsButton.setToolTipText("Settings");
         settingsButton.setOpaque(false);
         settingsButton.setContentAreaFilled(false);
@@ -625,13 +633,13 @@ public class App extends JFrame {
         settingsButton.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
-                settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+                settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textPrimary")));
                 settingsButton.repaint();
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+                settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
                 settingsButton.repaint();
             }
         });
@@ -1079,7 +1087,7 @@ public class App extends JFrame {
 
         JLabel time = new JLabel(item.getTimestamp().format(formatter));
         time.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
-        time.setForeground(new Color(110, 110, 125));
+        time.setForeground(getThemeColor("cardText"));
 
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         controlPanel.setOpaque(false);
@@ -1248,7 +1256,7 @@ public class App extends JFrame {
         card.cancelTimers();
 
         timeLabel.setText("✨ Copied to clipboard");
-        timeLabel.setForeground(Color.WHITE);
+        timeLabel.setForeground(getThemeColor("cardText"));
 
         final String originalTimestamp = item.getTimestamp().format(formatter);
 
@@ -1264,7 +1272,7 @@ public class App extends JFrame {
                 card.setFeedbackProgress(1.0f);
                 Timer resetTimer = new Timer(1200, evt -> {
                     timeLabel.setText(originalTimestamp);
-                    timeLabel.setForeground(new Color(110, 110, 125));
+                    timeLabel.setForeground(getThemeColor("cardText"));
                     card.setFeedbackProgress(-1.0f);
                 });
                 resetTimer.setRepeats(false);
@@ -1280,7 +1288,7 @@ public class App extends JFrame {
     private void showConfirmationDialog(String title, String message, Runnable onConfirm) {
         JDialog dialog = new JDialog(this, title, true);
         dialog.setLayout(new BorderLayout(20, 20));
-        dialog.getContentPane().setBackground(new Color(18, 18, 20)); // Match App BG
+        dialog.getContentPane().setBackground(getThemeColor("bgMain")); // Match App BG
 
         JPanel panel = new JPanel(new BorderLayout(15, 15));
         panel.setOpaque(false);
@@ -1289,22 +1297,22 @@ public class App extends JFrame {
         JLabel msgLabel = new JLabel(
                 "<html><div style='width:250px'>" + message.replace("\n", "<br>") + "</div></html>");
         msgLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 15));
-        msgLabel.setForeground(Color.WHITE);
+        msgLabel.setForeground(getThemeColor("textPrimary"));
         panel.add(msgLabel, BorderLayout.CENTER);
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         btnPanel.setOpaque(false);
 
         JButton cancelBtn = new JButton("Cancel");
-        cancelBtn.setBackground(new Color(45, 45, 52));
-        cancelBtn.setForeground(Color.WHITE);
+        cancelBtn.setBackground(getThemeColor("buttonBackground"));
+        cancelBtn.setForeground(getThemeColor("buttonText"));
         cancelBtn.setFocusPainted(false);
         cancelBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
         cancelBtn.addActionListener(e -> dialog.dispose());
 
         JButton confirmBtn = new JButton("Confirm");
         confirmBtn.setBackground(new Color(255, 60, 60)); // Red for destructive
-        confirmBtn.setForeground(Color.WHITE);
+        confirmBtn.setForeground(getThemeColor("buttonText"));
         confirmBtn.setFocusPainted(false);
         confirmBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
         confirmBtn.addActionListener(e -> {
@@ -1326,7 +1334,7 @@ public class App extends JFrame {
     private JButton createSubtleButton(Icon icon) {
         JButton btn = new JButton(icon);
         if (icon instanceof FlatSVGIcon) {
-            ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+            ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
         }
         btn.setBackground(new Color(0, 0, 0, 0));
         btn.setBorder(null);
@@ -1338,7 +1346,7 @@ public class App extends JFrame {
             @Override
             public void mouseEntered(MouseEvent e) {
                 if (icon instanceof FlatSVGIcon) {
-                    ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> Color.WHITE));
+                    ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textPrimary")));
                     btn.repaint();
                 }
             }
@@ -1346,7 +1354,7 @@ public class App extends JFrame {
             @Override
             public void mouseExited(MouseEvent e) {
                 if (icon instanceof FlatSVGIcon) {
-                    ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> new Color(110, 110, 125)));
+                    ((FlatSVGIcon) icon).setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
                     btn.repaint();
                 }
             }
@@ -1360,7 +1368,7 @@ public class App extends JFrame {
         dialog.setSize(440, 520);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(new Color(18, 18, 20));
+        dialog.getContentPane().setBackground(getThemeColor("bgMain"));
 
         JTabbedPane tabs = new JTabbedPane();
         tabs.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
@@ -1408,9 +1416,9 @@ public class App extends JFrame {
         for (String emoji : emojis) {
             JButton btn = new JButton(emoji);
             btn.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 28));
-            btn.setForeground(new Color(220, 220, 220));
+            btn.setForeground(getThemeColor("textSecondary"));
             btn.setContentAreaFilled(false);
-            btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
+            btn.setBorder(new LineBorder(getThemeColor("textSecondary"), 1, true));
             btn.setFocusPainted(false);
             btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             btn.setPreferredSize(new Dimension(50, 50));
@@ -1418,13 +1426,13 @@ public class App extends JFrame {
             btn.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseEntered(MouseEvent e) {
-                    btn.setBorder(new LineBorder(new Color(80, 80, 90), 1, true));
-                    btn.setForeground(Color.WHITE);
+                    btn.setBorder(new LineBorder(getThemeColor("textPrimary"), 1, true));
+                    btn.setForeground(getThemeColor("textPrimary"));
                 }
                 @Override
                 public void mouseExited(MouseEvent e) {
-                    btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
-                    btn.setForeground(new Color(220, 220, 220));
+                    btn.setBorder(new LineBorder(getThemeColor("textSecondary"), 1, true));
+                    btn.setForeground(getThemeColor("textSecondary"));
                 }
             });
 
@@ -1456,11 +1464,14 @@ public class App extends JFrame {
         customField.putClientProperty("JTextField.placeholderText", "Enter custom emoji or text...");
         customField.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
         customField.putClientProperty("JTextField.showClearButton", true);
+        customField.setBackground(getThemeColor("inputBackground"));
+        customField.setForeground(getThemeColor("inputText"));
+        customField.setCaretColor(getThemeColor("inputText"));
         
         JButton setBtn = new JButton("Apply Custom");
         setBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
-        setBtn.setBackground(new Color(50, 50, 55));
-        setBtn.setForeground(Color.WHITE);
+        setBtn.setBackground(getThemeColor("buttonBackground"));
+        setBtn.setForeground(getThemeColor("buttonText"));
         setBtn.setFocusPainted(false);
         setBtn.addActionListener(e -> {
             String text = customField.getText().trim();
@@ -1475,8 +1486,8 @@ public class App extends JFrame {
 
         JButton removeBtn = new JButton("Remove Icon");
         removeBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
-        removeBtn.setBackground(new Color(50, 20, 20));
-        removeBtn.setForeground(new Color(255, 100, 100));
+        removeBtn.setBackground(new Color(255, 60, 60));
+        removeBtn.setForeground(getThemeColor("buttonText"));
         removeBtn.setFocusPainted(false);
         removeBtn.addActionListener(e -> {
             tab.iconValue = null;
@@ -1507,15 +1518,15 @@ public class App extends JFrame {
 
     private JButton createIconSelectorButton(String iconPath, int size) {
         FlatSVGIcon icon = new FlatSVGIcon(iconPath, size, size);
-        Color defaultColor = new Color(160, 160, 170);
-        Color hoverColor = Color.WHITE;
+        Color defaultColor = getThemeColor("textSecondary");
+        Color hoverColor = getThemeColor("textPrimary");
         
         icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> defaultColor));
         
         JButton btn = new JButton(icon);
         btn.setPreferredSize(new Dimension(60, 60));
         btn.setContentAreaFilled(false);
-        btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
+        btn.setBorder(new LineBorder(defaultColor, 1, true));
         btn.setFocusPainted(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         
@@ -1523,13 +1534,13 @@ public class App extends JFrame {
             @Override
             public void mouseEntered(MouseEvent e) {
                 icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> hoverColor));
-                btn.setBorder(new LineBorder(new Color(80, 80, 90), 1, true));
+                btn.setBorder(new LineBorder(hoverColor, 1, true));
                 btn.repaint();
             }
             @Override
             public void mouseExited(MouseEvent e) {
                 icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> defaultColor));
-                btn.setBorder(new LineBorder(new Color(40, 40, 45), 1, true));
+                btn.setBorder(new LineBorder(defaultColor, 1, true));
                 btn.repaint();
             }
         });
@@ -1543,9 +1554,9 @@ public class App extends JFrame {
     }
 
     private void showInfoPopup(ClipboardItem item) {
-        JDialog dialog = new JDialog(this, "Item Information", true);
+        JDialog dialog = new JDialog(this, "Item Details", true);
         dialog.setLayout(new BorderLayout(20, 20));
-        dialog.getContentPane().setBackground(new Color(18, 18, 20));
+        dialog.getContentPane().setBackground(getThemeColor("bgMain"));
 
         JPanel mainPanel = new JPanel(new BorderLayout(20, 20));
         mainPanel.setOpaque(false);
@@ -1602,11 +1613,11 @@ public class App extends JFrame {
 
         for (String[] detail : details) {
             JLabel key = new JLabel(detail[0]);
-            key.setForeground(new Color(110, 110, 125));
+            key.setForeground(getThemeColor("textSecondary"));
             key.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
 
             JLabel val = new JLabel(detail[1]);
-            val.setForeground(Color.WHITE);
+            val.setForeground(getThemeColor("generalText"));
             val.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
 
             metaPanel.add(key);
@@ -1647,7 +1658,7 @@ public class App extends JFrame {
             textArea.setEditable(false);
             textArea.setLineWrap(true);
             textArea.setWrapStyleWord(true);
-            textArea.setBackground(new Color(28, 28, 32));
+            textArea.setBackground(getThemeColor("inputBackground"));
             
             if (item.getType() == ClipboardItem.Type.URL) {
                 textArea.setForeground(getThemeColor("accent"));
@@ -1655,16 +1666,16 @@ public class App extends JFrame {
                 attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
                 textArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16).deriveFont(attributes));
             } else {
-                textArea.setForeground(Color.WHITE);
+                textArea.setForeground(getThemeColor("inputText"));
                 textArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16));
             }
             
-            textArea.setCaretColor(Color.WHITE);
+            textArea.setCaretColor(getThemeColor("inputText"));
             textArea.setBorder(new EmptyBorder(15, 15, 15, 15));
 
             JScrollPane scroll = new JScrollPane(textArea);
             scroll.setPreferredSize(new Dimension(500, 300));
-            scroll.setBorder(new LineBorder(new Color(45, 45, 52)));
+            scroll.setBorder(new LineBorder(getThemeColor("textSecondary")));
             mainPanel.add(scroll, BorderLayout.CENTER);
         } else {
             JPanel imageContainer = new JPanel(new BorderLayout(10, 10));
@@ -1726,14 +1737,14 @@ public class App extends JFrame {
             btnPanel.setOpaque(false);
 
             JButton scanBtn = new JButton("Scan Text (OCR)");
-            scanBtn.setBackground(new Color(45, 45, 52));
-            scanBtn.setForeground(Color.WHITE);
+            scanBtn.setBackground(getThemeColor("buttonBackground"));
+            scanBtn.setForeground(getThemeColor("buttonText"));
             scanBtn.setFocusPainted(false);
             scanBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
 
             JButton searchBtn = new JButton("Visual Search");
-            searchBtn.setBackground(new Color(45, 45, 52));
-            searchBtn.setForeground(Color.WHITE);
+            searchBtn.setBackground(getThemeColor("buttonBackground"));
+            searchBtn.setForeground(getThemeColor("buttonText"));
             searchBtn.setFocusPainted(false);
             searchBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
 
@@ -1744,15 +1755,15 @@ public class App extends JFrame {
             resultArea.setEditable(false);
             resultArea.setLineWrap(true);
             resultArea.setWrapStyleWord(true);
-            resultArea.setBackground(new Color(28, 28, 32));
-            resultArea.setForeground(Color.WHITE);
+            resultArea.setBackground(getThemeColor("inputBackground"));
+            resultArea.setForeground(getThemeColor("inputText"));
             resultArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
             resultArea.setBorder(new EmptyBorder(10, 10, 10, 10));
             resultArea.setVisible(false);
 
             JScrollPane resultScroll = new JScrollPane(resultArea);
             resultScroll.setPreferredSize(new Dimension(500, 150));
-            resultScroll.setBorder(new LineBorder(new Color(45, 45, 52)));
+            resultScroll.setBorder(new LineBorder(getThemeColor("textSecondary")));
             resultScroll.setVisible(false);
 
             scanBtn.addActionListener(e -> {
@@ -1778,8 +1789,8 @@ public class App extends JFrame {
 
                                 // Add copy button for OCR result
                                 JButton copyOcrBtn = new JButton("Copy Extracted Text");
-                                copyOcrBtn.setBackground(new Color(60, 60, 70));
-                                copyOcrBtn.setForeground(Color.WHITE);
+                                copyOcrBtn.setBackground(getThemeColor("buttonBackground"));
+                                copyOcrBtn.setForeground(getThemeColor("buttonText"));
                                 copyOcrBtn.setFocusPainted(false);
                                 copyOcrBtn.setBorder(new EmptyBorder(5, 10, 5, 10));
                                 copyOcrBtn.addActionListener(copyEvt -> {
@@ -1839,8 +1850,8 @@ public class App extends JFrame {
         }
 
         JButton closeBtn = new JButton("Close");
-        closeBtn.setBackground(Color.WHITE);
-        closeBtn.setForeground(new Color(18, 18, 20));
+        closeBtn.setBackground(getThemeColor("buttonBackground"));
+        closeBtn.setForeground(getThemeColor("buttonText"));
         closeBtn.setFocusPainted(false);
         closeBtn.setBorder(new EmptyBorder(10, 20, 10, 20));
         closeBtn.addActionListener(e -> dialog.dispose());
@@ -1884,7 +1895,11 @@ public class App extends JFrame {
         contentPanel.add(createSectionHeader("Appearance", accent));
         
         contentPanel.add(createSettingLabel("Color Palette", textSecondary));
-        String[] themes = { "Dark", "Deep Ocean", "Forest", "Sunset" };
+        String[] themes = { 
+            "Dark", "Deep Ocean", "Forest", "Sunset", 
+            "Moonlight", "Neon Night", 
+            "Paper White", "Soft Mint", "Lavender Mist" 
+        };
         JComboBox<String> themeCombo = createStyledComboBox(themes, configManager.getTheme());
         contentPanel.add(themeCombo);
         contentPanel.add(Box.createVerticalStrut(15));
@@ -1940,8 +1955,8 @@ public class App extends JFrame {
         buttonPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         JButton saveBtn = new JButton("Save & Apply");
-        saveBtn.setBackground(accent);
-        saveBtn.setForeground(Color.WHITE);
+        saveBtn.setBackground(getThemeColor("buttonBackground"));
+        saveBtn.setForeground(getThemeColor("buttonText"));
         saveBtn.setFocusPainted(false);
         saveBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
         saveBtn.setBorder(new EmptyBorder(12, 25, 12, 25));
@@ -1970,8 +1985,8 @@ public class App extends JFrame {
         });
 
         JButton cancelBtn = new JButton("Cancel");
-        cancelBtn.setBackground(new Color(45, 45, 48));
-        cancelBtn.setForeground(new Color(200, 200, 210));
+        cancelBtn.setBackground(getThemeColor("inputBackground"));
+        cancelBtn.setForeground(getThemeColor("textSecondary"));
         cancelBtn.setFocusPainted(false);
         cancelBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
         cancelBtn.setBorder(new EmptyBorder(12, 25, 12, 25));
@@ -2012,6 +2027,8 @@ public class App extends JFrame {
         combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         combo.setAlignmentX(Component.LEFT_ALIGNMENT);
         combo.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        combo.setBackground(getThemeColor("inputBackground"));
+        combo.setForeground(getThemeColor("inputText"));
         return combo;
     }
 
@@ -2043,24 +2060,108 @@ public class App extends JFrame {
                 if ("accent".equals(key)) return new Color(60, 160, 255);
                 if ("textPrimary".equals(key)) return Color.WHITE;
                 if ("textSecondary".equals(key)) return new Color(150, 180, 210);
+                if ("cardText".equals(key)) return Color.WHITE;
+                if ("inputBackground".equals(key)) return new Color(30, 65, 95);
+                if ("inputText".equals(key)) return Color.WHITE;
+                if ("buttonBackground".equals(key)) return new Color(60, 160, 255);
+                if ("buttonText".equals(key)) return Color.WHITE;
+                if ("generalText".equals(key)) return Color.WHITE;
                 break;
             case "Forest":
                 if ("bgMain".equals(key)) return new Color(15, 30, 20);
                 if ("accent".equals(key)) return new Color(80, 200, 120);
                 if ("textPrimary".equals(key)) return new Color(230, 245, 230);
                 if ("textSecondary".equals(key)) return new Color(140, 170, 145);
+                if ("cardText".equals(key)) return Color.WHITE;
+                if ("inputBackground".equals(key)) return new Color(35, 70, 50);
+                if ("inputText".equals(key)) return new Color(230, 245, 230);
+                if ("buttonBackground".equals(key)) return new Color(80, 200, 120);
+                if ("buttonText".equals(key)) return Color.WHITE;
+                if ("generalText".equals(key)) return new Color(230, 245, 230);
                 break;
             case "Sunset":
                 if ("bgMain".equals(key)) return new Color(40, 20, 30);
                 if ("accent".equals(key)) return new Color(255, 100, 100);
                 if ("textPrimary".equals(key)) return new Color(255, 240, 240);
                 if ("textSecondary".equals(key)) return new Color(210, 160, 170);
+                if ("cardText".equals(key)) return Color.WHITE;
+                if ("inputBackground".equals(key)) return new Color(95, 50, 65);
+                if ("inputText".equals(key)) return new Color(255, 240, 240);
+                if ("buttonBackground".equals(key)) return new Color(255, 100, 100);
+                if ("buttonText".equals(key)) return Color.WHITE;
+                if ("generalText".equals(key)) return new Color(255, 240, 240);
+                break;
+            case "Moonlight":
+                if ("bgMain".equals(key)) return new Color(10, 10, 40); // Midnight Blue
+                if ("accent".equals(key)) return new Color(255, 255, 68); // #FFFF44
+                if ("textPrimary".equals(key)) return new Color(255, 255, 187); // #FFFFBB
+                if ("textSecondary".equals(key)) return new Color(200, 200, 160);
+                if ("cardText".equals(key)) return new Color(10, 10, 40); // Midnight Blue text on light card
+                if ("inputBackground".equals(key)) return new Color(20, 20, 60);
+                if ("inputText".equals(key)) return new Color(255, 255, 187);
+                if ("buttonBackground".equals(key)) return new Color(255, 255, 68);
+                if ("buttonText".equals(key)) return new Color(10, 10, 40);
+                if ("generalText".equals(key)) return new Color(255, 255, 187);
+                break;
+            case "Neon Night":
+                if ("bgMain".equals(key)) return new Color(5, 5, 5);
+                if ("accent".equals(key)) return new Color(0, 255, 0);
+                if ("textPrimary".equals(key)) return new Color(0, 255, 0);
+                if ("textSecondary".equals(key)) return new Color(0, 150, 0);
+                if ("cardText".equals(key)) return new Color(0, 255, 0);
+                if ("inputBackground".equals(key)) return new Color(20, 20, 20);
+                if ("inputText".equals(key)) return new Color(0, 255, 0);
+                if ("buttonBackground".equals(key)) return new Color(0, 255, 0);
+                if ("buttonText".equals(key)) return Color.BLACK;
+                if ("generalText".equals(key)) return new Color(0, 255, 0);
+                break;
+            case "Paper White":
+                if ("bgMain".equals(key)) return new Color(245, 245, 245);
+                if ("accent".equals(key)) return new Color(50, 50, 50);
+                if ("textPrimary".equals(key)) return new Color(20, 20, 20);
+                if ("textSecondary".equals(key)) return new Color(80, 80, 80);
+                if ("cardText".equals(key)) return new Color(20, 20, 20);
+                if ("inputBackground".equals(key)) return Color.WHITE;
+                if ("inputText".equals(key)) return Color.BLACK;
+                if ("buttonBackground".equals(key)) return new Color(220, 220, 220);
+                if ("buttonText".equals(key)) return Color.BLACK;
+                if ("generalText".equals(key)) return Color.BLACK;
+                break;
+            case "Soft Mint":
+                if ("bgMain".equals(key)) return new Color(224, 242, 241);
+                if ("accent".equals(key)) return new Color(0, 150, 136);
+                if ("textPrimary".equals(key)) return new Color(0, 77, 64);
+                if ("textSecondary".equals(key)) return new Color(0, 121, 107);
+                if ("cardText".equals(key)) return new Color(0, 77, 64);
+                if ("inputBackground".equals(key)) return new Color(250, 255, 255);
+                if ("inputText".equals(key)) return new Color(0, 77, 64);
+                if ("buttonBackground".equals(key)) return new Color(178, 223, 219);
+                if ("buttonText".equals(key)) return new Color(0, 77, 64);
+                if ("generalText".equals(key)) return new Color(0, 77, 64);
+                break;
+            case "Lavender Mist":
+                if ("bgMain".equals(key)) return new Color(243, 229, 245);
+                if ("accent".equals(key)) return new Color(156, 39, 176);
+                if ("textPrimary".equals(key)) return new Color(74, 20, 140);
+                if ("textSecondary".equals(key)) return new Color(106, 27, 154);
+                if ("cardText".equals(key)) return new Color(74, 20, 140);
+                if ("inputBackground".equals(key)) return new Color(255, 250, 255);
+                if ("inputText".equals(key)) return new Color(74, 20, 140);
+                if ("buttonBackground".equals(key)) return new Color(225, 190, 231);
+                if ("buttonText".equals(key)) return new Color(74, 20, 140);
+                if ("generalText".equals(key)) return new Color(74, 20, 140);
                 break;
             default: // Dark
                 if ("bgMain".equals(key)) return new Color(18, 18, 20);
                 if ("accent".equals(key)) return new Color(60, 120, 255);
                 if ("textPrimary".equals(key)) return Color.WHITE;
                 if ("textSecondary".equals(key)) return new Color(180, 180, 190);
+                if ("cardText".equals(key)) return Color.WHITE;
+                if ("inputBackground".equals(key)) return new Color(45, 45, 52);
+                if ("inputText".equals(key)) return Color.WHITE;
+                if ("buttonBackground".equals(key)) return new Color(60, 120, 255);
+                if ("buttonText".equals(key)) return Color.WHITE;
+                if ("generalText".equals(key)) return Color.WHITE;
                 break;
         }
         return Color.WHITE;
@@ -2069,7 +2170,38 @@ public class App extends JFrame {
     private void applySettings() {
         Color bgMain = getThemeColor("bgMain");
         getContentPane().setBackground(bgMain);
+        
+        // Update header components
+        titleLabel.setForeground(getThemeColor("textPrimary"));
+        
+        searchField.setBackground(getThemeColor("inputBackground"));
+        searchField.setForeground(getThemeColor("inputText"));
+        searchField.setCaretColor(getThemeColor("inputText"));
+        searchField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(getThemeColor("textSecondary"), 1, true),
+                new EmptyBorder(5, 10, 5, 10)));
+        
+        searchIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
+        trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
+        settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
+        
+        searchScopeCombo.setBackground(getThemeColor("inputBackground"));
+        searchScopeCombo.setForeground(getThemeColor("inputText"));
+        
+        // Force recreation of all cards to apply new theme colors/fonts
+        cardMap.clear();
+        contentPanel.removeAll();
+        
+        // Repaint tabs panel to update highlight color
+        if (tabsPanel != null) {
+            tabsPanel.repaint();
+        }
+        
+        refreshTabsUI();
         refreshUI();
+        
+        validate();
+        repaint();
     }
 
     private Component createTextPreviewComponent(ClipboardItem item, int itemCols, int itemRows, JPanel card) {
@@ -2088,7 +2220,7 @@ public class App extends JFrame {
             attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
             preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2).deriveFont(attributes));
         } else {
-            preview.setForeground(Color.WHITE);
+            preview.setForeground(getThemeColor("cardText"));
             preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
         }
 
@@ -2218,7 +2350,7 @@ public class App extends JFrame {
             Color body;
             Color topLeft;
             Color bottomRight;
-            Color accent = Color.WHITE;
+            Color accent = getThemeColor("accent");
 
             switch (theme) {
                 case "Deep Ocean":
@@ -2236,6 +2368,31 @@ public class App extends JFrame {
                     topLeft = new Color(95, 50, 65);
                     bottomRight = new Color(55, 25, 35);
                     break;
+                case "Moonlight":
+                    body = new Color(255, 255, 187); // #FFFFBB
+                    topLeft = new Color(255, 255, 230);
+                    bottomRight = new Color(200, 200, 150);
+                    break;
+                case "Neon Night":
+                    body = new Color(15, 15, 15);
+                    topLeft = new Color(30, 30, 30);
+                    bottomRight = new Color(5, 5, 5);
+                    break;
+                case "Paper White":
+                    body = new Color(255, 255, 255);
+                    topLeft = new Color(245, 245, 245);
+                    bottomRight = new Color(220, 220, 220);
+                    break;
+                case "Soft Mint":
+                    body = new Color(240, 255, 250);
+                    topLeft = new Color(250, 255, 255);
+                    bottomRight = new Color(200, 230, 220);
+                    break;
+                case "Lavender Mist":
+                    body = new Color(250, 240, 255);
+                    topLeft = new Color(255, 250, 255);
+                    bottomRight = new Color(230, 210, 240);
+                    break;
                 default: // Dark
                     body = new Color(0x222226);
                     topLeft = new Color(0x29292D);
@@ -2248,15 +2405,28 @@ public class App extends JFrame {
             g2.fillRect(0, 0, w, h);
 
             if (feedbackProgress >= 0) {
-                g2.setColor(Color.WHITE);
+                g2.setColor(getThemeColor("cardText"));
                 int thickness = (int) (2 + (5 * (1 - feedbackProgress)));
                 g2.setStroke(new BasicStroke(thickness));
                 int offset = thickness / 2;
                 g2.drawRect(offset, offset, w - thickness, h - thickness);
             } else if (hovered) {
-                g2.setColor(accent);
-                g2.setStroke(new BasicStroke(3));
-                g2.drawRect(1, 1, w - 3, h - 3);
+                if ("Moonlight".equals(theme)) {
+                    // Subtle glow effect
+                    Color glowColor = new Color(255, 255, 68);
+                    for (int i = 0; i < 4; i++) {
+                        g2.setColor(new Color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), 60 - (i * 10)));
+                        g2.setStroke(new BasicStroke(6 - i));
+                        g2.drawRect(1, 1, w - 3, h - 3);
+                    }
+                    g2.setColor(accent);
+                    g2.setStroke(new BasicStroke(2));
+                    g2.drawRect(1, 1, w - 3, h - 3);
+                } else {
+                    g2.setColor(accent);
+                    g2.setStroke(new BasicStroke(3));
+                    g2.drawRect(1, 1, w - 3, h - 3);
+                }
             } else {
                 // Top-left shading (three pixels thick)
                 g2.setColor(topLeft);
