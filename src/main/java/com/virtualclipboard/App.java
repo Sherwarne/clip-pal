@@ -33,13 +33,353 @@ import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class App extends JFrame {
-    private final JPanel contentPanel = new JPanel(new GridBagLayout());
+    private final JPanel contentPanel = new JPanel(null);
     private final JScrollPane scrollPane = new JScrollPane(contentPanel);
     private final ClipboardMonitor monitor;
-    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm:ss");
+    private final Map<ClipboardItem, AnimatedCard> cardMap = new HashMap<>();
+    private Timer layoutTimer;
+
+    // Custom Tabs Panel with Animation Support
+    private class TabsPanel extends JPanel {
+        private final List<JButton> tabButtons = new ArrayList<>();
+        private JButton addButton;
+        private final Rectangle highlightBounds = new Rectangle();
+        private final Rectangle targetHighlightBounds = new Rectangle();
+        private Timer animationTimer;
+        
+        private int draggedIndex = -1;
+        private int dragOffsetX = 0;
+        
+        private boolean hasDragged = false;
+        private int dragStartScreenX;
+        
+        public TabsPanel() {
+            super(null);
+            setOpaque(false);
+            
+            animationTimer = new Timer(16, e -> animate());
+            animationTimer.start();
+        }
+        
+        @Override
+        public Dimension getPreferredSize() {
+            int w = 0;
+            for (JButton btn : tabButtons) {
+                w += btn.getPreferredSize().width + 4;
+            }
+            if (addButton != null) {
+                w += addButton.getPreferredSize().width + 4;
+            }
+            return new Dimension(w, 40);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (activeTabIndex >= 0 && activeTabIndex < tabButtons.size()) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(45, 45, 52));
+                g2.fillRoundRect(highlightBounds.x, highlightBounds.y, highlightBounds.width, highlightBounds.height, 10, 10);
+                g2.dispose();
+            }
+        }
+        
+        private void animate() {
+            boolean changed = false;
+            float speed = 0.2f;
+            float threshold = 0.5f;
+
+            int panelWidth = getWidth();
+            if (panelWidth == 0) return; // Not laid out yet
+
+            // Calculate dynamic tab width
+            int addButtonWidth = (addButton != null) ? 30 + 4 : 0;
+            int totalSpacing = (tabButtons.size()) * 4; // 4px spacing
+            int availableWidth = panelWidth - addButtonWidth - totalSpacing;
+            
+            // Limit max width but ensure we fill if possible
+            int targetTabWidth = 0;
+            if (tabButtons.size() > 0) {
+                 targetTabWidth = availableWidth / tabButtons.size();
+                 // Optional: clamp max width if desired, e.g. 250
+                 targetTabWidth = Math.min(targetTabWidth, 250);
+                 // Ensure min width
+                 targetTabWidth = Math.max(targetTabWidth, 80);
+            }
+            
+            // Layout buttons
+            int currentX = 0;
+            for (int i = 0; i < tabButtons.size(); i++) {
+                JButton btn = tabButtons.get(i);
+                int targetX = currentX;
+                int targetW = targetTabWidth;
+
+                if (i == draggedIndex) {
+                    // Skip animating dragged button X, handled by mouse drag
+                    // But maybe animate width? 
+                    // Let's animate width even if dragged
+                    if (Math.abs(btn.getWidth() - targetW) > threshold) {
+                         btn.setSize(btn.getWidth() + (int)((targetW - btn.getWidth()) * speed), btn.getHeight());
+                         changed = true;
+                    } else {
+                         btn.setSize(targetW, btn.getHeight());
+                    }
+                } else {
+                    int btnX = btn.getX();
+                    int btnW = btn.getWidth();
+                    
+                    if (Math.abs(btnX - targetX) > threshold) {
+                        btn.setLocation(btnX + (int)((targetX - btnX) * speed), btn.getY());
+                        changed = true;
+                    } else {
+                        btn.setLocation(targetX, btn.getY());
+                    }
+                    
+                    if (Math.abs(btnW - targetW) > threshold) {
+                        btn.setSize(btnW + (int)((targetW - btnW) * speed), btn.getHeight());
+                        changed = true;
+                    } else {
+                        btn.setSize(targetW, btn.getHeight());
+                    }
+                }
+                
+                // Update active highlight target
+                if (i == activeTabIndex) {
+                    targetHighlightBounds.setBounds(targetX, 0, targetW, btn.getHeight());
+                }
+                
+                currentX += targetW + 4;
+            }
+            
+            if (addButton != null) {
+                int btnX = addButton.getX();
+                if (Math.abs(btnX - currentX) > threshold) {
+                    addButton.setLocation(btnX + (int)((currentX - btnX) * speed), addButton.getY());
+                    changed = true;
+                } else {
+                    addButton.setLocation(currentX, addButton.getY());
+                }
+            }
+            
+            // Animate highlight
+            if (Math.abs(highlightBounds.x - targetHighlightBounds.x) > threshold || 
+                Math.abs(highlightBounds.width - targetHighlightBounds.width) > threshold) {
+                highlightBounds.x += (targetHighlightBounds.x - highlightBounds.x) * speed;
+                highlightBounds.width += (targetHighlightBounds.width - highlightBounds.width) * speed;
+                highlightBounds.y = targetHighlightBounds.y;
+                highlightBounds.height = targetHighlightBounds.height;
+                changed = true;
+            } else {
+                highlightBounds.setBounds(targetHighlightBounds);
+            }
+            
+            if (changed) repaint();
+        }
+        
+        public void refresh(List<ClipboardTab> tabs, int activeIndex) {
+            // Only rebuild if tab count/names changed or forced
+            // For now, simpler to rebuild but we lose drag state if we are not careful.
+            // But refresh() is called on adding/removing tabs, not during drag.
+            
+            removeAll();
+            tabButtons.clear();
+            
+            int panelWidth = getWidth();
+            int targetW = -1;
+            if (panelWidth > 0 && !tabs.isEmpty()) {
+                 int btnCount = tabs.size();
+                 int addButtonWidth = (btnCount < 7) ? 34 : 0;
+                 int availableWidth = panelWidth - addButtonWidth - (btnCount * 4);
+                 targetW = availableWidth / btnCount;
+                 targetW = Math.min(targetW, 250);
+                 targetW = Math.max(targetW, 80);
+            }
+            
+            int x = 0;
+            for (int i = 0; i < tabs.size(); i++) {
+                ClipboardTab tab = tabs.get(i);
+                boolean isActive = (i == activeIndex);
+                
+                JButton btn = createTabButton(tab, i, isActive);
+                // Calculate size immediately for layout
+                if (targetW > 0) {
+                    btn.setSize(targetW, btn.getPreferredSize().height);
+                } else {
+                    btn.setSize(btn.getPreferredSize());
+                }
+                btn.setLocation(x, 0);
+                
+                tabButtons.add(btn);
+                add(btn);
+                
+                if (isActive) {
+                    // If first load
+                    if (highlightBounds.width == 0) {
+                        highlightBounds.setBounds(x, 0, btn.getWidth(), btn.getHeight());
+                    }
+                    targetHighlightBounds.setBounds(x, 0, btn.getWidth(), btn.getHeight());
+                }
+                
+                x += btn.getWidth() + 4;
+            }
+            
+            // Add button logic
+             if (tabs.size() < 7) {
+                addButton = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/plus.svg", 16, 16));
+                addButton.setToolTipText("New Tab");
+                addButton.addActionListener(e -> {
+                    tabs.add(new ClipboardTab("Tab " + (tabs.size() + 1)));
+                    activeTabIndex = tabs.size() - 1; 
+                    refreshTabsUI();
+                    refreshUI();
+                });
+                addButton.setSize(30, 30); // fixed size
+                addButton.setLocation(x, 0);
+                add(addButton);
+            } else {
+                addButton = null;
+            }
+            
+            revalidate();
+            repaint();
+        }
+        
+        private JButton createTabButton(ClipboardTab tab, int index, boolean isActive) {
+            JButton tabBtn = new JButton(tab.name);
+            tabBtn.setFont(getAppFont(FONT_FAMILY_TEXT, isActive ? Font.BOLD : Font.PLAIN, 14));
+            tabBtn.setForeground(isActive ? Color.WHITE : new Color(110, 110, 125));
+            tabBtn.setContentAreaFilled(false); 
+            tabBtn.setFocusPainted(false);
+            tabBtn.setBorder(new EmptyBorder(5, 12, 5, 12));
+            tabBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            
+            // Click handler logic is now in mouseReleased to avoid conflict with drag
+            /*
+            tabBtn.addActionListener(e -> {
+                int currentIdx = getButtonIndex(tabBtn);
+                if (activeTabIndex != currentIdx && currentIdx != -1) {
+                    activeTabIndex = currentIdx;
+                    refreshTabsUI();
+                    refreshUI();
+                }
+            });
+            */
+            
+            // Context menu logic
+            JPopupMenu tabMenu = new JPopupMenu();
+            JMenuItem renameItem = new JMenuItem("Rename Tab");
+            renameItem.addActionListener(e -> {
+                String newName = JOptionPane.showInputDialog(App.this, "Enter new tab name:", tab.name);
+                if (newName != null && !newName.trim().isEmpty()) {
+                    tab.name = newName.trim();
+                    refreshTabsUI();
+                }
+            });
+            tabMenu.add(renameItem);
+            
+            if (tabs.size() > 1) {
+                JMenuItem deleteItem = new JMenuItem("Delete Tab");
+                deleteItem.addActionListener(e -> {
+                    showConfirmationDialog("Delete Tab", "Delete tab '" + tab.name + "' and its items?", () -> {
+                        tabs.remove(tab);
+                        if (activeTabIndex >= tabs.size()) activeTabIndex = 0;
+                        refreshTabsUI();
+                        refreshUI();
+                    });
+                });
+                tabMenu.add(deleteItem);
+            }
+            tabBtn.setComponentPopupMenu(tabMenu);
+            
+            // Drag logic
+            MouseAdapter ma = new MouseAdapter() {
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    if (SwingUtilities.isLeftMouseButton(e)) {
+                        draggedIndex = getButtonIndex(tabBtn);
+                        if (draggedIndex != -1) {
+                            dragOffsetX = e.getX();
+                            dragStartScreenX = e.getXOnScreen();
+                            hasDragged = false;
+                            setComponentZOrder(tabBtn, 0); // Bring to front
+                        }
+                    }
+                }
+                
+                @Override
+                public void mouseReleased(MouseEvent e) {
+                    if (SwingUtilities.isLeftMouseButton(e)) {
+                        if (!hasDragged && draggedIndex != -1) {
+                            // Treat as click
+                            int currentIdx = getButtonIndex(tabBtn);
+                            if (activeTabIndex != currentIdx && currentIdx != -1) {
+                                activeTabIndex = currentIdx;
+                                refreshTabsUI();
+                                refreshUI();
+                            }
+                        }
+                        draggedIndex = -1;
+                        repaint();
+                    }
+                }
+                
+                @Override
+                public void mouseDragged(MouseEvent e) {
+                    if (SwingUtilities.isLeftMouseButton(e) && draggedIndex != -1) {
+                        if (!hasDragged && Math.abs(e.getXOnScreen() - dragStartScreenX) > 5) {
+                            hasDragged = true;
+                        }
+                        
+                        if (hasDragged) {
+                            int newX = tabBtn.getX() + e.getX() - dragOffsetX;
+                            // Clamp
+                            newX = Math.max(0, Math.min(newX, getWidth() - tabBtn.getWidth()));
+                            tabBtn.setLocation(newX, 0);
+                            
+                            // Check for swap
+                            int centerX = newX + tabBtn.getWidth() / 2;
+                            
+                            // Find button under center
+                            for (int i = 0; i < tabButtons.size(); i++) {
+                                if (i == draggedIndex) continue;
+                                JButton other = tabButtons.get(i);
+                                int otherCenter = other.getX() + other.getWidth() / 2;
+                                
+                                if (Math.abs(centerX - otherCenter) < other.getWidth() / 2) {
+                                    // Swap
+                                    Collections.swap(tabs, draggedIndex, i);
+                                    // Swap buttons in list to keep sync
+                                    Collections.swap(tabButtons, draggedIndex, i);
+                                    
+                                    // Update active index
+                                    if (activeTabIndex == draggedIndex) activeTabIndex = i;
+                                    else if (activeTabIndex == i) activeTabIndex = draggedIndex;
+                                    
+                                    draggedIndex = i; // Update dragged index
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+            tabBtn.addMouseListener(ma);
+            tabBtn.addMouseMotionListener(ma);
+            
+            return tabBtn;
+        }
+        
+        // Helper to find index dynamically
+        private int getButtonIndex(JButton btn) {
+            return tabButtons.indexOf(btn);
+        }
+    }
 
     // Tabbed Structure
     private static class ClipboardTab implements Serializable {
@@ -56,7 +396,7 @@ public class App extends JFrame {
 
     private final List<ClipboardTab> tabs = new ArrayList<>();
     private int activeTabIndex = 0;
-    private JPanel tabsPanel; // UI Container for tabs
+    private TabsPanel tabsPanel; // UI Container for tabs
     private JTextField searchField;
     private JComboBox<String> searchScopeCombo;
     private String searchQuery = "";
@@ -151,8 +491,8 @@ public class App extends JFrame {
 
         // Tab Bar UI
         // Tab Bar UI
-        tabsPanel = new JPanel(new GridBagLayout()); // Use GridBagLayout for dynamic sizing
-        tabsPanel.setOpaque(false);
+        tabsPanel = new TabsPanel(); 
+        // tabsPanel.setOpaque(false); // Handled in TabsPanel constructor
         tabs.add(new ClipboardTab("Main")); // Default tab
 
         // Try to restore previous clipboard state (tabs and items)
@@ -195,7 +535,10 @@ public class App extends JFrame {
 
         clearButton.addActionListener(e -> {
             showConfirmationDialog("Clear History",
-                    "Are you sure you want to clear all history?\nThis action cannot be undone.", this::animateClear);
+                    "Are you sure you want to clear all history?\nThis action cannot be undone.", () -> {
+                        getCurrentTab().items.clear();
+                        refreshUI();
+                    });
         });
 
         FlatSVGIcon settingsIcon = new FlatSVGIcon("com/virtualclipboard/icons/settings.svg", 24, 24);
@@ -236,15 +579,19 @@ public class App extends JFrame {
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
         scrollPane.getVerticalScrollBar().setUnitIncrement(30);
-        add(scrollPane, BorderLayout.CENTER);
 
-        // Adaptive resize handling
-        addComponentListener(new ComponentAdapter() {
+        // Adaptive resize handling - Listen to viewport to ensure accurate width
+        scrollPane.getViewport().addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
                 refreshUI();
             }
         });
+
+        add(scrollPane, BorderLayout.CENTER);
+
+        // Adaptive resize handling on frame removed in favor of viewport listener
+
 
         monitor = new ClipboardMonitor(this::addNewItem);
 
@@ -339,32 +686,7 @@ public class App extends JFrame {
 
             refreshUI();
             saveClipboardState();
-            if (tabs.indexOf(currentTab) == activeTabIndex) {
-                animateNewEntry(item);
-            }
         });
-    }
-
-    private void animateNewEntry(ClipboardItem item) {
-        // Find the card that was just created by refreshUI() (should be the first one)
-        Component[] components = contentPanel.getComponents();
-        if (components.length > 0 && components[0] instanceof AnimatedCard) {
-            AnimatedCard card = (AnimatedCard) components[0];
-            card.setAlpha(0.0f);
-
-            Timer timer = new Timer(10, null);
-            final float[] alpha = { 0.0f };
-            timer.addActionListener(e -> {
-                alpha[0] += 0.05f;
-                if (alpha[0] >= 1.0f) {
-                    alpha[0] = 1.0f;
-                    timer.stop();
-                }
-                card.setAlpha(alpha[0]);
-                card.repaint();
-            });
-            timer.start();
-        }
     }
 
     private ClipboardTab getCurrentTab() {
@@ -376,282 +698,177 @@ public class App extends JFrame {
     }
 
     private void refreshTabsUI() {
-        tabsPanel.removeAll();
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 2, 0, 2);
-
-        for (int i = 0; i < tabs.size(); i++) {
-            ClipboardTab tab = tabs.get(i);
-            boolean isActive = (i == activeTabIndex);
-
-            // Tab Button
-            JButton tabBtn = new JButton(tab.name);
-            tabBtn.setFont(getAppFont(FONT_FAMILY_TEXT, isActive ? Font.BOLD : Font.PLAIN, 14));
-            tabBtn.setForeground(isActive ? Color.WHITE : new Color(110, 110, 125));
-            tabBtn.setBackground(isActive ? new Color(45, 45, 52) : new Color(0, 0, 0, 0));
-            tabBtn.setBorder(new EmptyBorder(5, 12, 5, 12));
-            tabBtn.setFocusPainted(false);
-            tabBtn.setContentAreaFilled(isActive);
-            tabBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
-            int finalI = i;
-            tabBtn.addActionListener(e -> {
-                if (activeTabIndex != finalI) {
-                    activeTabIndex = finalI;
-                    refreshTabsUI();
-                    refreshUI();
-                }
-            });
-
-            // Context Menu for Tab
-            JPopupMenu tabMenu = new JPopupMenu();
-
-            JMenuItem renameItem = new JMenuItem("Rename Tab");
-            renameItem.addActionListener(e -> {
-                String newName = JOptionPane.showInputDialog(this, "Enter new tab name:", tab.name);
-                if (newName != null && !newName.trim().isEmpty()) {
-                    tab.name = newName.trim();
-                    refreshTabsUI();
-                }
-            });
-            tabMenu.add(renameItem);
-
-            if (tabs.size() > 1) {
-                JMenuItem deleteItem = new JMenuItem("Delete Tab");
-                deleteItem.addActionListener(e -> {
-                    showConfirmationDialog("Delete Tab", "Delete tab '" + tab.name + "' and its items?", () -> {
-                        tabs.remove(tab);
-                        if (activeTabIndex >= tabs.size())
-                            activeTabIndex = 0;
-                        refreshTabsUI();
-                        refreshUI();
-                    });
-                });
-                tabMenu.add(deleteItem);
-            }
-
-            tabBtn.setComponentPopupMenu(tabMenu);
-
-            // Drag and Drop Logic
-            MouseAdapter dragHandler = new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
-                    if (!isActive) {
-                        tabBtn.setBackground(new Color(45, 45, 52, 100)); // Subtle hover
-                        tabBtn.setContentAreaFilled(true);
-                        tabBtn.repaint();
-                    }
-                }
-
-                @Override
-                public void mouseExited(MouseEvent e) {
-                    if (!isActive) {
-                        tabBtn.setBackground(new Color(0, 0, 0, 0));
-                        tabBtn.setContentAreaFilled(false);
-                        tabBtn.repaint();
-                    }
-                }
-
-                // Only start drag if moved
-                public void mouseDragged(MouseEvent e) {
-                    JComponent c = (JComponent) e.getSource();
-                    TransferHandler handler = c.getTransferHandler();
-                    handler.exportAsDrag(c, e, TransferHandler.MOVE);
-                }
-            };
-            tabBtn.addMouseListener(dragHandler);
-            tabBtn.addMouseMotionListener(dragHandler);
-
-            tabBtn.setTransferHandler(new TransferHandler("text") {
-                @Override
-                public int getSourceActions(JComponent c) {
-                    return MOVE;
-                }
-
-                @Override
-                protected Transferable createTransferable(JComponent c) {
-                    return new StringSelection(String.valueOf(finalI)); // Transfer index
-                }
-
-                @Override
-                public boolean canImport(TransferSupport support) {
-                    return support.isDataFlavorSupported(DataFlavor.stringFlavor);
-                }
-
-                @Override
-                public boolean importData(TransferSupport support) {
-                    try {
-                        String data = (String) support.getTransferable().getTransferData(DataFlavor.stringFlavor);
-                        int sourceIndex = Integer.parseInt(data);
-                        int targetIndex = finalI;
-
-                        if (sourceIndex != targetIndex) {
-                            ClipboardTab draggedTab = tabs.remove(sourceIndex);
-                            tabs.add(targetIndex, draggedTab);
-
-                            // Adjust active index if needed
-                            if (activeTabIndex == sourceIndex) {
-                                activeTabIndex = targetIndex;
-                            } else if (activeTabIndex == targetIndex) {
-                                // If we dropped onto the active tab, it shifts
-                                if (sourceIndex < targetIndex)
-                                    activeTabIndex--;
-                                else
-                                    activeTabIndex++;
-                            } else {
-                                // Complex shifting logic, simpliest is to adhere to 'draggedTab' reference
-                                activeTabIndex = tabs.indexOf(getCurrentTab());
-                            }
-
-                            // Ensure valid index just in case
-                            activeTabIndex = tabs.indexOf(getCurrentTab());
-
-                            refreshTabsUI();
-                            return true;
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    return false;
-                }
-            });
-
-            tabsPanel.add(tabBtn, gbc);
+        if (tabsPanel != null) {
+            tabsPanel.refresh(tabs, activeTabIndex);
         }
-
-        if (tabs.size() < 7) { // Increased limit to 7
-            JButton addBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/plus.svg", 16, 16));
-            addBtn.setToolTipText("New Tab");
-            addBtn.addActionListener(e -> {
-                tabs.add(new ClipboardTab("Tab " + (tabs.size() + 1)));
-                activeTabIndex = tabs.size() - 1; // Switch to new tab
-                refreshTabsUI();
-                refreshUI();
-            });
-
-            gbc.weightx = 0; // Don't let add button stretch
-            tabsPanel.add(addBtn, gbc);
-        }
-
-        tabsPanel.revalidate();
-        tabsPanel.repaint();
     }
 
     private void refreshUI() {
-        contentPanel.removeAll();
-        contentPanel.setLayout(new GridBagLayout());
-        
-        boolean searchAll = searchScopeCombo != null && "All Tabs".equals(searchScopeCombo.getSelectedItem());
-        List<ClipboardTab> searchList = searchAll ? tabs : List.of(getCurrentTab());
-
+        // Calculate grid columns and width
         int windowWidth = scrollPane.getViewport().getWidth();
-        if (windowWidth <= 0) windowWidth = getWidth() - 20; // Fallback if viewport not ready
-        
+        if (windowWidth <= 0) windowWidth = getWidth() - 20;
+
         int cols;
         if (windowWidth > 1300) cols = 4;
         else if (windowWidth > 900) cols = 3;
         else if (windowWidth > 600) cols = 2;
         else cols = 1;
 
-        // Simple Masonry Grid Tracker
-        boolean[][] occupied = new boolean[1000][cols]; // rows x cols
-        int currentMaxRow = 0;
+        int baseCardWidth = (windowWidth - (cols * 20)) / cols;
+        // Base height 200 scaled
+        int baseCardHeight = (int) (200 * Math.max(0.8, (double) getHeight() / 1080.0));
 
+        // Get items to show
+        boolean searchAll = searchScopeCombo != null && "All Tabs".equals(searchScopeCombo.getSelectedItem());
+        List<ClipboardTab> searchList = searchAll ? tabs : List.of(getCurrentTab());
+        
+        List<ClipboardItem> itemsToShow = new ArrayList<>();
         for (ClipboardTab tab : searchList) {
-            for (ClipboardItem item : tab.items) {
-                if (!searchQuery.isEmpty()) {
+             for (ClipboardItem item : tab.items) {
+                 if (!searchQuery.isEmpty()) {
                     if (item.getType() == ClipboardItem.Type.TEXT) {
-                        if (!item.getText().toLowerCase().contains(searchQuery)) continue;
+                        if (item.getText() == null || !item.getText().toLowerCase().contains(searchQuery)) continue;
                     } else continue;
                 }
+                itemsToShow.add(item);
+             }
+        }
 
-                int itemRows = item.getRows();
-                int itemCols = Math.min(item.getCols(), cols); // Don't exceed available columns
-
-                // Find first available slot
-                int gridX = 0, gridY = 0;
-                boolean found = false;
-                for (int y = 0; y < 1000 && !found; y++) {
-                    for (int x = 0; x <= cols - itemCols; x++) {
-                        boolean canFit = true;
-                        for (int dy = 0; dy < itemRows; dy++) {
-                            for (int dx = 0; dx < itemCols; dx++) {
-                                if (occupied[y + dy][x + dx]) {
-                                    canFit = false;
-                                    break;
-                                }
-                            }
-                            if (!canFit) break;
-                        }
-
-                        if (canFit) {
-                            gridX = x;
-                            gridY = y;
-                            // Mark occupied
-                            for (int dy = 0; dy < itemRows; dy++) {
-                                for (int dx = 0; dx < itemCols; dx++) {
-                                    occupied[y + dy][x + dx] = true;
-                                }
-                            }
-                            currentMaxRow = Math.max(currentMaxRow, y + itemRows);
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-
-                GridBagConstraints gbc = new GridBagConstraints();
-                gbc.gridx = gridX;
-                gbc.gridy = gridY;
-                gbc.gridwidth = itemCols;
-                gbc.gridheight = itemRows;
-                gbc.fill = GridBagConstraints.BOTH;
-                gbc.insets = new Insets(5, 5, 5, 5);
-                gbc.weightx = 1.0;
-                gbc.weighty = 0.0; // Don't stretch vertically unless needed
-
-                contentPanel.add(createItemCard(item, windowWidth), gbc);
+        // Identify items to remove (in cardMap but not in itemsToShow)
+        List<ClipboardItem> toRemove = new ArrayList<>();
+        for (ClipboardItem item : cardMap.keySet()) {
+            if (!itemsToShow.contains(item)) {
+                toRemove.add(item);
             }
         }
 
-        // Add a filler at the bottom to keep items at the top
-        GridBagConstraints fillerGbc = new GridBagConstraints();
-        fillerGbc.gridx = 0;
-        fillerGbc.gridy = currentMaxRow;
-        fillerGbc.gridwidth = cols;
-        fillerGbc.weighty = 1.0;
-        contentPanel.add(Box.createVerticalGlue(), fillerGbc);
+        for (ClipboardItem item : toRemove) {
+            AnimatedCard card = cardMap.get(item);
+            if (card != null) {
+                // Animate out
+                Timer t = new Timer(10, null);
+                final float[] alpha = { 1.0f };
+                t.addActionListener(e -> {
+                    alpha[0] -= 0.1f;
+                    if (alpha[0] <= 0.0f) {
+                        t.stop();
+                        contentPanel.remove(card);
+                        contentPanel.repaint();
+                    } else {
+                        card.setAlpha(alpha[0]);
+                        card.repaint();
+                    }
+                });
+                t.start();
+            }
+            cardMap.remove(item); 
+        }
 
+        // Layout calculation
+        boolean[][] occupied = new boolean[1000][cols];
+        int currentMaxRow = 0;
+
+        for (ClipboardItem item : itemsToShow) {
+            int itemRows = item.getRows();
+            int itemCols = Math.min(item.getCols(), cols);
+
+            // Find slot
+            int gridX = 0, gridY = 0;
+            boolean found = false;
+            for (int y = 0; y < 1000 && !found; y++) {
+                for (int x = 0; x <= cols - itemCols; x++) {
+                    boolean canFit = true;
+                    for (int dy = 0; dy < itemRows; dy++) {
+                        for (int dx = 0; dx < itemCols; dx++) {
+                            if (occupied[y + dy][x + dx]) {
+                                canFit = false;
+                                break;
+                            }
+                        }
+                        if (!canFit) break;
+                    }
+                    if (canFit) {
+                        gridX = x;
+                        gridY = y;
+                        for (int dy = 0; dy < itemRows; dy++) {
+                            for (int dx = 0; dx < itemCols; dx++) {
+                                occupied[y + dy][x + dx] = true;
+                            }
+                        }
+                        currentMaxRow = Math.max(currentMaxRow, y + itemRows);
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            // Calculate target bounds
+            // Assuming 20px gap, 10px margin
+            int cardWidth = baseCardWidth * itemCols + (itemCols - 1) * 20;
+            int cardHeight = baseCardHeight * itemRows + (itemRows - 1) * 20;
+            int x = 10 + gridX * (baseCardWidth + 20);
+            int y = 10 + gridY * (baseCardHeight + 20);
+
+            AnimatedCard card = cardMap.get(item);
+            if (card == null) {
+                // New card
+                card = createItemCard(item, windowWidth);
+                contentPanel.add(card);
+                cardMap.put(item, card);
+                
+                // Initial state
+                card.setTargetBounds(x, y, cardWidth, cardHeight);
+                // Start slightly lower for slide-up effect
+                card.setBounds(x, y + 50, cardWidth, cardHeight);
+                card.setAlpha(0.0f);
+                
+                // Fade in
+                AnimatedCard finalCard = card;
+                Timer t = new Timer(10, null);
+                final float[] alpha = { 0.0f };
+                t.addActionListener(e -> {
+                    alpha[0] += 0.05f;
+                    if (alpha[0] >= 1.0f) {
+                        alpha[0] = 1.0f;
+                        t.stop();
+                    }
+                    finalCard.setAlpha(alpha[0]);
+                    finalCard.repaint();
+                });
+                t.start();
+            } else {
+                // Existing card, update target
+                card.setTargetBounds(x, y, cardWidth, cardHeight);
+            }
+        }
+
+        // Update preferred size
+        int totalHeight = 10 + currentMaxRow * (baseCardHeight + 20);
+        contentPanel.setPreferredSize(new Dimension(windowWidth, totalHeight));
+        
+        // Start layout animation loop
+        if (layoutTimer == null || !layoutTimer.isRunning()) {
+            layoutTimer = new Timer(16, e -> {
+                boolean anyChanged = false;
+                for (AnimatedCard c : cardMap.values()) {
+                    if (c.animateStep()) anyChanged = true;
+                }
+                if (!anyChanged) {
+                    ((Timer)e.getSource()).stop();
+                }
+                contentPanel.repaint(); // Repaint for smooth animation
+            });
+            layoutTimer.start();
+        } else {
+            // Ensure it continues if it was about to stop
+            if (!layoutTimer.isRunning()) layoutTimer.start();
+        }
+        
         contentPanel.revalidate();
         contentPanel.repaint();
     }
 
-    private void animateClear() {
-        Component[] components = contentPanel.getComponents();
-        if (components.length == 0)
-            return;
 
-        Timer timer = new Timer(10, null);
-        final float[] alpha = { 1.0f };
-        timer.addActionListener(e -> {
-            alpha[0] -= 0.1f;
-            if (alpha[0] <= 0.0f) {
-                alpha[0] = 0.0f;
-                timer.stop();
-                getCurrentTab().items.clear(); // Fix items.clear()
-                refreshUI();
-            }
-            for (Component c : components) {
-                if (c instanceof AnimatedCard) {
-                    ((AnimatedCard) c).setAlpha(alpha[0]);
-                }
-            }
-            contentPanel.repaint();
-        });
-        timer.start();
-    }
 
     /**
      * Persist the current clipboard tabs and items to disk so they can be
@@ -698,6 +915,48 @@ public class App extends JFrame {
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
+    }
+
+    private JComponent createScalableImageComponent(Image img, AnimatedCard card) {
+        JPanel preview = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (img == null) return;
+
+                int iw = img.getWidth(this);
+                int ih = img.getHeight(this);
+                if (iw <= 0 || ih <= 0) return;
+
+                int cw = getWidth();
+                int ch = getHeight();
+                if (cw <= 0 || ch <= 0) return;
+
+                double scale = Math.min((double) cw / iw, (double) ch / ih);
+                int tw = (int) (iw * scale);
+                int th = (int) (ih * scale);
+
+                int x = (cw - tw) / 2;
+                int y = (ch - th) / 2;
+
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2.drawImage(img, x, y, tw, th, this);
+                g2.dispose();
+            }
+        };
+        preview.setOpaque(false);
+        
+        // Forward mouse events
+        MouseAdapter ma = new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+        };
+        preview.addMouseListener(ma);
+        return preview;
     }
 
     private AnimatedCard createItemCard(ClipboardItem item, int windowWidth) {
@@ -849,76 +1108,9 @@ public class App extends JFrame {
             contentArea.add(previewComponent, BorderLayout.CENTER);
         } else if (item.getType() == ClipboardItem.Type.GIF) {
             final ImageIcon icon = new ImageIcon(item.getGifData());
-            JPanel preview = new JPanel() {
-                @Override
-                protected void paintComponent(Graphics g) {
-                    super.paintComponent(g);
-                    Image img = icon.getImage();
-                    if (img == null) return;
-
-                    int iw = icon.getIconWidth();
-                    int ih = icon.getIconHeight();
-                    if (iw <= 0 || ih <= 0) return;
-
-                    int cw = getWidth();
-                    int ch = getHeight();
-                    if (cw <= 0 || ch <= 0) return;
-
-                    double scale = Math.min((double) cw / iw, (double) ch / ih);
-                    int tw = (int) (iw * scale);
-                    int th = (int) (ih * scale);
-
-                    int x = (cw - tw) / 2;
-                    int y = (ch - th) / 2;
-
-                    Graphics2D g2 = (Graphics2D) g.create();
-                    g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                    g2.drawImage(img, x, y, tw, th, this);
-                    g2.dispose();
-                }
-            };
-            preview.setOpaque(false);
-            
-            // Forward mouse events to the card
-            preview.addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            });
-
-            contentArea.add(preview, BorderLayout.CENTER);
+            contentArea.add(createScalableImageComponent(icon.getImage(), card), BorderLayout.CENTER);
         } else {
-            JLabel preview = new JLabel();
-            preview.setHorizontalAlignment(SwingConstants.CENTER);
-            int maxImgWidth = cardWidth - 40;
-            int maxImgHeight = cardHeight - 80;
-            
-            double imgAR = (double) item.getWidth() / item.getHeight();
-            int targetWidth, targetHeight;
-            
-            if (imgAR > (double) maxImgWidth / maxImgHeight) {
-                targetWidth = maxImgWidth;
-                targetHeight = -1;
-            } else {
-                targetWidth = -1;
-                targetHeight = maxImgHeight;
-            }
-            
-            Image scaled = item.getImage().getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH);
-            preview.setIcon(new ImageIcon(scaled));
-
-            // Forward mouse events to the card
-            preview.addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            });
-
-            contentArea.add(preview, BorderLayout.CENTER);
+            contentArea.add(createScalableImageComponent(item.getImage(), card), BorderLayout.CENTER);
         }
         card.add(contentArea, BorderLayout.CENTER);
 
@@ -979,20 +1171,19 @@ public class App extends JFrame {
             frame[0]++;
             if (frame[0] <= 15) {
                 float ratio = frame[0] / 15.0f;
-                card.setBorder(BorderFactory.createCompoundBorder(
-                        new LineBorder(Color.WHITE, (int) (2 + (5 * (1 - ratio))), true),
-                        new EmptyBorder(12, 19, 19, 19)));
+                card.setFeedbackProgress(ratio);
             } else {
                 pulseTimer.stop();
+                card.setFeedbackProgress(1.0f);
                 Timer resetTimer = new Timer(1200, evt -> {
                     timeLabel.setText(originalTimestamp);
                     timeLabel.setForeground(new Color(110, 110, 125));
+                    card.setFeedbackProgress(-1.0f);
                 });
                 resetTimer.setRepeats(false);
                 card.setResetTimer(resetTimer);
                 resetTimer.start();
             }
-            card.repaint();
         });
 
         card.setPulseTimer(pulseTimer);
@@ -1078,20 +1269,9 @@ public class App extends JFrame {
     }
 
     private void deleteEntry(ClipboardItem item, AnimatedCard card) {
-        Timer timer = new Timer(10, null);
-        final float[] alpha = { 1.0f };
-        timer.addActionListener(e -> {
-            alpha[0] -= 0.1f;
-            if (alpha[0] <= 0.0f) {
-                timer.stop();
-                monitor.resetIfCurrent(item);
-                getCurrentTab().items.remove(item); // Fix items.remove()
-                refreshUI();
-            }
-            card.setAlpha(alpha[0]);
-            card.repaint();
-        });
-        timer.start();
+        monitor.resetIfCurrent(item);
+        getCurrentTab().items.remove(item);
+        refreshUI();
     }
 
     private void showInfoPopup(ClipboardItem item) {
@@ -1659,12 +1839,67 @@ public class App extends JFrame {
     private class AnimatedCard extends JPanel {
         private float alpha = 1.0f;
         private boolean hovered = false;
+        private float feedbackProgress = -1.0f;
         private Timer pulseTimer;
         private Timer resetTimer;
+        
+        private Rectangle targetBounds;
+        private float currentX, currentY, currentW, currentH;
 
         public AnimatedCard(LayoutManager layout) {
             super(layout);
             setOpaque(false);
+        }
+        
+        public void setTargetBounds(int x, int y, int width, int height) {
+             if (targetBounds == null) {
+                 // First time initialization
+                 currentX = x;
+                 currentY = y;
+                 currentW = width;
+                 currentH = height;
+                 setBounds(x, y, width, height);
+             }
+             this.targetBounds = new Rectangle(x, y, width, height);
+        }
+
+        public boolean animateStep() {
+             if (targetBounds == null) return false;
+             
+             boolean changed = false;
+             float speed = 0.2f; // Animation speed
+             float threshold = 0.5f;
+
+             if (Math.abs(targetBounds.x - currentX) > threshold) {
+                 currentX += (targetBounds.x - currentX) * speed;
+                 changed = true;
+             } else currentX = targetBounds.x;
+
+             if (Math.abs(targetBounds.y - currentY) > threshold) {
+                 currentY += (targetBounds.y - currentY) * speed;
+                 changed = true;
+             } else currentY = targetBounds.y;
+             
+             if (Math.abs(targetBounds.width - currentW) > threshold) {
+                 currentW += (targetBounds.width - currentW) * speed;
+                 changed = true;
+             } else currentW = targetBounds.width;
+             
+             if (Math.abs(targetBounds.height - currentH) > threshold) {
+                 currentH += (targetBounds.height - currentH) * speed;
+                 changed = true;
+             } else currentH = targetBounds.height;
+             
+             if (changed) {
+                super.setBounds((int)currentX, (int)currentY, (int)currentW, (int)currentH);
+                revalidate();
+                doLayout(); // Force immediate layout for children alignment
+            } else {
+                super.setBounds(targetBounds.x, targetBounds.y, targetBounds.width, targetBounds.height);
+                revalidate();
+                doLayout();
+            }
+            return changed;
         }
 
         public void setAlpha(float alpha) {
@@ -1673,6 +1908,11 @@ public class App extends JFrame {
 
         public void setHovered(boolean hovered) {
             this.hovered = hovered;
+            repaint();
+        }
+
+        public void setFeedbackProgress(float progress) {
+            this.feedbackProgress = progress;
             repaint();
         }
 
@@ -1732,7 +1972,13 @@ public class App extends JFrame {
             g2.setColor(body);
             g2.fillRect(0, 0, w, h);
 
-            if (hovered) {
+            if (feedbackProgress >= 0) {
+                g2.setColor(Color.WHITE);
+                int thickness = (int) (2 + (5 * (1 - feedbackProgress)));
+                g2.setStroke(new BasicStroke(thickness));
+                int offset = thickness / 2;
+                g2.drawRect(offset, offset, w - thickness, h - thickness);
+            } else if (hovered) {
                 g2.setColor(accent);
                 g2.setStroke(new BasicStroke(3));
                 g2.drawRect(1, 1, w - 3, h - 3);
