@@ -55,7 +55,11 @@ public class ConfigManager {
     }
 
     public String getTheme() {
-        return properties.getProperty("theme", "Dark");
+        String theme = properties.getProperty("theme", "Dark");
+        if ("Moonlight".equals(theme)) {
+            return "Twilight";
+        }
+        return theme;
     }
 
     public void setTheme(String theme) {
@@ -92,5 +96,13 @@ public class ConfigManager {
 
     public void setAutoSortByDate(boolean enabled) {
         properties.setProperty("autoSortByDate", String.valueOf(enabled));
+    }
+
+    public boolean isUseSvgTypeIcons() {
+        return Boolean.parseBoolean(properties.getProperty("useSvgTypeIcons", "false"));
+    }
+
+    public void setUseSvgTypeIcons(boolean enabled) {
+        properties.setProperty("useSvgTypeIcons", String.valueOf(enabled));
     }
 }

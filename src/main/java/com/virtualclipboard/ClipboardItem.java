@@ -3,10 +3,18 @@ package com.virtualclipboard;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Document;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import java.io.StringReader;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.metadata.IIOMetadata;
+import javax.imageio.metadata.IIOMetadataNode;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -14,6 +22,7 @@ import java.io.Serializable;
 import java.net.URI;
 import java.net.URL;
 import java.time.LocalDateTime;
+import java.util.Iterator;
 import java.util.Objects;
 
 public class ClipboardItem implements Serializable {
@@ -32,6 +41,8 @@ public class ClipboardItem implements Serializable {
     private final long sizeInBytes;
     private final int width;
     private final int height;
+    private int frameCount = 0;
+    private int durationMs = 0;
 
     private void writeObject(ObjectOutputStream out) throws IOException {
         out.defaultWriteObject();
@@ -44,6 +55,9 @@ public class ClipboardItem implements Serializable {
         in.defaultReadObject();
         if (type == Type.IMAGE) {
             image = ImageIO.read(in);
+        } else if (type == Type.GIF && (frameCount == 0 || durationMs == 0)) {
+            // Re-parse metadata if missing (e.g. deserialized from older version)
+            parseGifMetadata();
         }
     }
 
@@ -58,6 +72,52 @@ public class ClipboardItem implements Serializable {
         this.sizeInBytes = gifData.length;
         this.width = width;
         this.height = height;
+        parseGifMetadata();
+    }
+
+    private void parseGifMetadata() {
+        if (gifData == null) return;
+        
+        try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(gifData))) {
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
+            if (readers.hasNext()) {
+                ImageReader reader = readers.next();
+                reader.setInput(iis);
+                this.frameCount = reader.getNumImages(true);
+                
+                int totalDuration = 0;
+                for (int i = 0; i < frameCount; i++) {
+                    IIOMetadata metadata = reader.getImageMetadata(i);
+                    String metaFormatName = metadata.getNativeMetadataFormatName();
+                    IIOMetadataNode root = (IIOMetadataNode) metadata.getAsTree(metaFormatName);
+                    
+                    int delay = 10; // Default 100ms (10 * 10ms)
+                    
+                    NodeList children = root.getChildNodes();
+                    for (int j = 0; j < children.getLength(); j++) {
+                        Node node = children.item(j);
+                        if ("GraphicControlExtension".equals(node.getNodeName())) {
+                            NamedNodeMap attrs = node.getAttributes();
+                            Node delayNode = attrs.getNamedItem("delayTime");
+                            if (delayNode != null) {
+                                delay = Integer.parseInt(delayNode.getNodeValue());
+                                // Many viewers treat 0 delay as 100ms (10cs)
+                                if (delay == 0) {
+                                    delay = 10;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    // delayTime is in hundredths of a second (10ms)
+                    totalDuration += delay * 10;
+                }
+                this.durationMs = totalDuration;
+            }
+        } catch (Exception e) {
+            // Ignore metadata parsing errors, basic info is still valid
+            System.err.println("Failed to parse GIF metadata: " + e.getMessage());
+        }
     }
 
     public ClipboardItem(String text) {
@@ -221,6 +281,22 @@ public class ClipboardItem implements Serializable {
         return height;
     }
 
+    public int getFrameCount() {
+        return frameCount;
+    }
+
+    public int getDurationMs() {
+        return durationMs;
+    }
+    
+    public String getFormattedDuration() {
+        if (durationMs < 1000) {
+            return durationMs + " ms";
+        } else {
+            return String.format("%.1f s", durationMs / 1000.0);
+        }
+    }
+
     public String getFormattedSize() {
         if (sizeInBytes < 1024)
             return sizeInBytes + " B";
@@ -265,7 +341,7 @@ public class ClipboardItem implements Serializable {
             return 1;
         } else {
             double ar = (double) width / height;
-            if (ar < 0.5) return 2; // Portrait (updated threshold)
+            if (ar < 0.8) return 2; // Portrait (updated threshold)
             if (width > 800 && height > 600) return 2; // Large
             return 1;
         }

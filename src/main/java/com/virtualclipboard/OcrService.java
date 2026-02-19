@@ -69,8 +69,30 @@ public class OcrService {
                 return getYandexSearchUrl(imageUrl);
             case "Bing":
                 return getBingSearchUrl(imageUrl);
+            case "TinEye":
+                return getTinEyeSearchUrl(imageUrl);
+            case "SauceNAO":
+                return getSauceNAOSearchUrl(imageUrl);
             default:
                 return getGoogleSearchUrl(imageUrl);
+        }
+    }
+
+    private String getTinEyeSearchUrl(String imageUrl) throws IOException {
+        try {
+            String encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8");
+            return "https://tineye.com/search?url=" + encodedUrl;
+        } catch (Exception e) {
+            throw new IOException("Failed to encode URL for TinEye", e);
+        }
+    }
+
+    private String getSauceNAOSearchUrl(String imageUrl) throws IOException {
+        try {
+            String encodedUrl = java.net.URLEncoder.encode(imageUrl, "UTF-8");
+            return "https://saucenao.com/search.php?db=999&url=" + encodedUrl;
+        } catch (Exception e) {
+            throw new IOException("Failed to encode URL for SauceNAO", e);
         }
     }
 
