@@ -54,6 +54,14 @@ public class ConfigManager {
         properties.setProperty("searchEngine", engine);
     }
 
+    public String getTextSearchEngine() {
+        return properties.getProperty("textSearchEngine", "Google");
+    }
+
+    public void setTextSearchEngine(String engine) {
+        properties.setProperty("textSearchEngine", engine);
+    }
+
     public String getTheme() {
         String theme = properties.getProperty("theme", "Dark");
         if ("Moonlight".equals(theme)) {
@@ -99,10 +107,34 @@ public class ConfigManager {
     }
 
     public boolean isUseSvgTypeIcons() {
-        return Boolean.parseBoolean(properties.getProperty("useSvgTypeIcons", "false"));
+        return Boolean.parseBoolean(properties.getProperty("useSvgTypeIcons", "true"));
     }
 
     public void setUseSvgTypeIcons(boolean enabled) {
         properties.setProperty("useSvgTypeIcons", String.valueOf(enabled));
+    }
+
+    public boolean isUse24HourTime() {
+        return Boolean.parseBoolean(properties.getProperty("use24HourTime", "false"));
+    }
+
+    public void setUse24HourTime(boolean enabled) {
+        properties.setProperty("use24HourTime", String.valueOf(enabled));
+    }
+
+    public boolean isDynamicResizing() {
+        return Boolean.parseBoolean(properties.getProperty("dynamicResizing", "true"));
+    }
+
+    public void setDynamicResizing(boolean enabled) {
+        properties.setProperty("dynamicResizing", String.valueOf(enabled));
+    }
+
+    public boolean isHighContrast() {
+        return Boolean.parseBoolean(properties.getProperty("highContrast", "false"));
+    }
+
+    public void setHighContrast(boolean enabled) {
+        properties.setProperty("highContrast", String.valueOf(enabled));
     }
 }

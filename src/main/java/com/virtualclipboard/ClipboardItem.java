@@ -33,8 +33,8 @@ public class ClipboardItem implements Serializable {
 
     private final Type type;
     private final String text;
-    private final String urlDomain;
-    private final String urlProtocol;
+    private String urlDomain;
+    private String urlProtocol;
     private transient BufferedImage image;
     private byte[] gifData;
     private final LocalDateTime timestamp;
@@ -55,9 +55,23 @@ public class ClipboardItem implements Serializable {
         in.defaultReadObject();
         if (type == Type.IMAGE) {
             image = ImageIO.read(in);
-        } else if (type == Type.GIF && (frameCount == 0 || durationMs == 0)) {
-            // Re-parse metadata if missing (e.g. deserialized from older version)
+        } else if (type == Type.GIF) {
+            // Always re-parse metadata on load to ensure accuracy/updates
             parseGifMetadata();
+        } else if (type == Type.URL) {
+            // Recalculate URL metadata
+            String domain = "N/A";
+            String protocol = "N/A";
+            try {
+                String spec = text.startsWith("http") ? text : "http://" + text;
+                URL url = new URI(spec).toURL();
+                domain = url.getHost();
+                protocol = url.getProtocol();
+            } catch (Exception e) {
+                // Not a valid URL despite regex
+            }
+            this.urlDomain = domain;
+            this.urlProtocol = protocol;
         }
     }
 
@@ -91,7 +105,7 @@ public class ClipboardItem implements Serializable {
                     String metaFormatName = metadata.getNativeMetadataFormatName();
                     IIOMetadataNode root = (IIOMetadataNode) metadata.getAsTree(metaFormatName);
                     
-                    int delay = 10; // Default 100ms (10 * 10ms)
+                    int delay = 2; // Default 20ms (2 * 10ms)
                     
                     NodeList children = root.getChildNodes();
                     for (int j = 0; j < children.getLength(); j++) {
@@ -101,9 +115,9 @@ public class ClipboardItem implements Serializable {
                             Node delayNode = attrs.getNamedItem("delayTime");
                             if (delayNode != null) {
                                 delay = Integer.parseInt(delayNode.getNodeValue());
-                                // Many viewers treat 0 delay as 100ms (10cs)
+                                // Many viewers treat 0 delay as 20ms (2cs)
                                 if (delay == 0) {
-                                    delay = 10;
+                                    delay = 2;
                                 }
                             }
                             break;
