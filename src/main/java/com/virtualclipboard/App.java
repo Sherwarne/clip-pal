@@ -1,11 +1,27 @@
 package com.virtualclipboard;
 
-import com.formdev.flatlaf.FlatDarkLaf;
-
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
-import javax.swing.border.LineBorder;
-import java.awt.*;
+import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Cursor;
+import java.awt.Desktop;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GradientPaint;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
+import java.awt.GridLayout;
+import java.awt.Image;
+import java.awt.Insets;
+import java.awt.LayoutManager;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.Toolkit;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
@@ -22,20 +38,60 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.font.TextAttribute;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.awt.Desktop;
-import java.awt.font.TextAttribute;
 import java.time.format.DateTimeFormatter;
-import com.formdev.flatlaf.extras.FlatSVGIcon;
-import java.util.Map;
-import java.util.HashMap;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CompletableFuture;
+
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JDialog;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
+import javax.swing.JTabbedPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+import javax.swing.Timer;
+import javax.swing.UIManager;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
+
+import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 
 public class App extends JFrame {
     private final JPanel contentPanel = new JPanel(null);
@@ -980,16 +1036,48 @@ public class App extends JFrame {
             saveClipboardState();
 
             // Trigger AI Caption if enabled
-            if (configManager.isAiCaptionEnabled() && item.getType() == ClipboardItem.Type.TEXT) {
-                ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
-                    if (caption != null && !caption.isEmpty()) {
-                        item.setCaption(caption);
-                        SwingUtilities.invokeLater(() -> {
-                            refreshUI(); 
-                            saveClipboardState();
-                        });
+            if (configManager.isAiCaptionEnabled()) {
+                if (item.getType() == ClipboardItem.Type.TEXT) {
+                    ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                        if (caption != null && !caption.isEmpty()) {
+                            item.setCaption(caption);
+                            SwingUtilities.invokeLater(() -> {
+                                refreshUI(); 
+                                saveClipboardState();
+                            });
+                        }
+                    });
+                } else if (item.getType() == ClipboardItem.Type.IMAGE && item.getImage() != null) {
+                    // Generate AI caption for images
+                    ollamaService.generateImageCaption(item.getImage()).thenAccept(caption -> {
+                        if (caption != null && !caption.isEmpty()) {
+                            item.setCaption(caption);
+                            SwingUtilities.invokeLater(() -> {
+                                refreshUI(); 
+                                saveClipboardState();
+                            });
+                        }
+                    });
+                } else if (item.getType() == ClipboardItem.Type.GIF && item.getGifData() != null) {
+                    // For GIFs, try to get first frame for captioning
+                    try {
+                        BufferedImage firstFrame = javax.imageio.ImageIO.read(
+                            new java.io.ByteArrayInputStream(item.getGifData()));
+                        if (firstFrame != null) {
+                            ollamaService.generateImageCaption(firstFrame).thenAccept(caption -> {
+                                if (caption != null && !caption.isEmpty()) {
+                                    item.setCaption(caption);
+                                    SwingUtilities.invokeLater(() -> {
+                                        refreshUI(); 
+                                        saveClipboardState();
+                                    });
+                                }
+                            });
+                        }
+                    } catch (Exception e) {
+                        // Ignore GIF caption errors
                     }
-                });
+                }
             }
         });
     }
@@ -1368,17 +1456,51 @@ public class App extends JFrame {
                         int missingCount = 0;
                         for (ClipboardTab tab : tabs) {
                             for (ClipboardItem item : tab.items) {
-                                if (item.getType() == ClipboardItem.Type.TEXT && item.getCaption() == null) {
-                                    missingCount++;
-                                    ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
-                                        if (caption != null && !caption.isEmpty()) {
-                                            item.setCaption(caption);
-                                            SwingUtilities.invokeLater(() -> {
-                                                refreshUI(); 
-                                                saveClipboardState();
-                                            });
+                                if (item.getCaption() == null) {
+                                    if (item.getType() == ClipboardItem.Type.TEXT && item.getText() != null) {
+                                        missingCount++;
+                                        final int count = missingCount; // Effectively final for lambda
+                                        ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                                            if (caption != null && !caption.isEmpty()) {
+                                                item.setCaption(caption);
+                                                SwingUtilities.invokeLater(() -> {
+                                                    refreshUI(); 
+                                                    saveClipboardState();
+                                                });
+                                            }
+                                        });
+                                    } else if (item.getType() == ClipboardItem.Type.IMAGE && item.getImage() != null) {
+                                        missingCount++;
+                                        ollamaService.generateImageCaption(item.getImage()).thenAccept(caption -> {
+                                            if (caption != null && !caption.isEmpty()) {
+                                                item.setCaption(caption);
+                                                SwingUtilities.invokeLater(() -> {
+                                                    refreshUI(); 
+                                                    saveClipboardState();
+                                                });
+                                            }
+                                        });
+                                    } else if (item.getType() == ClipboardItem.Type.GIF && item.getGifData() != null) {
+                                        // Try to caption GIFs using first frame
+                                        try {
+                                            BufferedImage firstFrame = javax.imageio.ImageIO.read(
+                                                new java.io.ByteArrayInputStream(item.getGifData()));
+                                            if (firstFrame != null) {
+                                                missingCount++;
+                                                ollamaService.generateImageCaption(firstFrame).thenAccept(caption -> {
+                                                    if (caption != null && !caption.isEmpty()) {
+                                                        item.setCaption(caption);
+                                                        SwingUtilities.invokeLater(() -> {
+                                                            refreshUI(); 
+                                                            saveClipboardState();
+                                                        });
+                                                    }
+                                                });
+                                            }
+                                        } catch (Exception e) {
+                                            // Ignore GIF caption errors
                                         }
-                                    });
+                                    }
                                 }
                             }
                         }
@@ -2145,24 +2267,47 @@ public class App extends JFrame {
                 captionBtn.addActionListener(e -> {
                     captionBtn.setEnabled(false);
                     captionBtn.setText("Generating...");
-                    ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
-                         SwingUtilities.invokeLater(() -> {
-                             if (caption != null && !caption.isEmpty()) {
-                                 item.setCaption(caption);
-                                 saveClipboardState();
-                                 refreshUI();
-                                 dialog.dispose();
-                                 showInfoPopup(item); // Reopen to show new caption
-                             } else {
-                                 captionBtn.setText("Failed / Offline");
-                                 Timer t = new Timer(2000, evt -> {
-                                     captionBtn.setText("Generate Caption");
-                                     captionBtn.setEnabled(true);
-                                 });
-                                 t.setRepeats(false);
-                                 t.start();
-                             }
-                         });
+                    
+                    // Handle different types
+                    CompletableFuture<String> captionFuture;
+                    
+                    if (item.getType() == ClipboardItem.Type.TEXT) {
+                        captionFuture = ollamaService.generateCaption(item.getText());
+                    } else if (item.getType() == ClipboardItem.Type.IMAGE && item.getImage() != null) {
+                        captionFuture = ollamaService.generateImageCaption(item.getImage());
+                    } else if (item.getType() == ClipboardItem.Type.GIF && item.getGifData() != null) {
+                        // Try to caption GIF using first frame
+                        try {
+                            BufferedImage firstFrame = javax.imageio.ImageIO.read(
+                                new java.io.ByteArrayInputStream(item.getGifData()));
+                            captionFuture = (firstFrame != null) 
+                                ? ollamaService.generateImageCaption(firstFrame)
+                                : CompletableFuture.completedFuture(null);
+                        } catch (Exception ex) {
+                            captionFuture = CompletableFuture.completedFuture(null);
+                        }
+                    } else {
+                        captionFuture = CompletableFuture.completedFuture(null);
+                    }
+                    
+                    captionFuture.thenAccept(caption -> {
+                        SwingUtilities.invokeLater(() -> {
+                            if (caption != null && !caption.isEmpty()) {
+                                item.setCaption(caption);
+                                saveClipboardState();
+                                refreshUI();
+                                dialog.dispose();
+                                showInfoPopup(item); // Reopen to show new caption
+                            } else {
+                                captionBtn.setText("Failed / Offline");
+                                Timer t = new Timer(2000, evt -> {
+                                    captionBtn.setText("Generate Caption");
+                                    captionBtn.setEnabled(true);
+                                });
+                                t.setRepeats(false);
+                                t.start();
+                            }
+                        });
                     });
                 });
                 btnPanel.add(captionBtn);
@@ -2673,9 +2818,17 @@ public class App extends JFrame {
             
             for (ClipboardTab tab : tabs) {
                 for (ClipboardItem item : tab.items) {
-                    if (item.getType() == ClipboardItem.Type.TEXT && (item.getCaption() == null || item.getCaption().isEmpty())) {
-                        totalItems++;
-                        itemsToProcess.add(item);
+                    if (item.getCaption() == null || item.getCaption().isEmpty()) {
+                        if (item.getType() == ClipboardItem.Type.TEXT && item.getText() != null) {
+                            totalItems++;
+                            itemsToProcess.add(item);
+                        } else if (item.getType() == ClipboardItem.Type.IMAGE && item.getImage() != null) {
+                            totalItems++;
+                            itemsToProcess.add(item);
+                        } else if (item.getType() == ClipboardItem.Type.GIF && item.getGifData() != null) {
+                            totalItems++;
+                            itemsToProcess.add(item);
+                        }
                     }
                 }
             }
@@ -2696,7 +2849,29 @@ public class App extends JFrame {
             int finalTotal = totalItems;
 
             for (ClipboardItem item : itemsToProcess) {
-                ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                // Handle different types
+                CompletableFuture<String> captionFuture;
+                
+                if (item.getType() == ClipboardItem.Type.TEXT) {
+                    captionFuture = ollamaService.generateCaption(item.getText());
+                } else if (item.getType() == ClipboardItem.Type.IMAGE && item.getImage() != null) {
+                    captionFuture = ollamaService.generateImageCaption(item.getImage());
+                } else if (item.getType() == ClipboardItem.Type.GIF && item.getGifData() != null) {
+                    // Try to caption GIF using first frame
+                    try {
+                        BufferedImage firstFrame = javax.imageio.ImageIO.read(
+                            new java.io.ByteArrayInputStream(item.getGifData()));
+                        captionFuture = (firstFrame != null) 
+                            ? ollamaService.generateImageCaption(firstFrame)
+                            : CompletableFuture.completedFuture(null);
+                    } catch (Exception ex) {
+                        captionFuture = CompletableFuture.completedFuture(null);
+                    }
+                } else {
+                    captionFuture = CompletableFuture.completedFuture(null);
+                }
+                
+                captionFuture.thenAccept(caption -> {
                     int current = completedCount.incrementAndGet();
                     SwingUtilities.invokeLater(() -> {
                         generateAllBtn.setText("Generating... (" + current + "/" + finalTotal + ")");

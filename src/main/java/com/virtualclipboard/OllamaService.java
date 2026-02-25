@@ -1,15 +1,22 @@
 package com.virtualclipboard;
 
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.ArrayList;
-import java.util.List;
+
+import javax.imageio.ImageIO;
 
 public class OllamaService {
     private static final String OLLAMA_API_URL = "http://localhost:11434/api/generate";
@@ -88,6 +95,174 @@ public class OllamaService {
                 }
             }, executor);
         });
+    }
+
+    public CompletableFuture<String> generateImageCaption(BufferedImage image) {
+        if (!configManager.isAiCaptionEnabled()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        
+        return checkConnection().thenCompose(isRunning -> {
+            if (!isRunning) {
+                return CompletableFuture.completedFuture(null);
+            }
+            
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    // Convert image to base64 - use smaller size for speed
+                    String base64Image = imageToBase64(image, 512); // Reduced to 512px for speed
+                    if (base64Image == null) {
+                        System.err.println("OllamaService: Failed to encode image to base64");
+                        return null;
+                    }
+
+                    String configuredModel = configManager.getOllamaModel();
+                    
+                    // For image captioning, we need a vision-capable model
+                    // Try to find a vision model, fallback to configured model
+                    String model = resolveVisionModel(configuredModel);
+                    if (model == null) {
+                        System.err.println("OllamaService: No vision model found. Configured: " + configuredModel);
+                        return null;
+                    }
+
+                    System.out.println("OllamaService: Generating image caption using model '" + model + "'");
+                    
+                    // JSON body with image data for vision models - shorter prompt for speed
+                    String jsonBody = String.format(
+                        "{\n" +
+                        "  \"model\": \"%s\",\n" +
+                        "  \"prompt\": \"Briefly describe this image in 5-10 words.\",\n" +
+                        "  \"images\": [\"%s\"],\n" +
+                        "  \"stream\": false,\n" +
+                        "  \"options\": {\"num_ctx\": 2048, \"temperature\": 0.5}\n" +
+                        "}", model, base64Image);
+
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(URI.create(OLLAMA_API_URL))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                            .timeout(Duration.ofSeconds(45)) // Reduced timeout for faster response
+                            .build();
+
+                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                    if (response.statusCode() == 200) {
+                        String result = extractResponse(response.body());
+                        System.out.println("OllamaService: Generated image caption: " + result);
+                        return result;
+                    } else {
+                        System.err.println("OllamaService: Image API Error: " + response.statusCode() + " - " + response.body());
+                        return null;
+                    }
+                } catch (Exception e) {
+                    System.err.println("OllamaService: Exception generating image caption: " + e.getMessage());
+                    return null;
+                }
+            }, executor);
+        });
+    }
+
+    private String imageToBase64(BufferedImage image, int maxSize) {
+        try {
+            // Resize image to reduce size for faster processing
+            BufferedImage resized = resizeImage(image, maxSize);
+            
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(resized, "png", baos);
+            byte[] imageBytes = baos.toByteArray();
+            return Base64.getEncoder().encodeToString(imageBytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private BufferedImage resizeImage(BufferedImage original, int maxSize) {
+        int width = original.getWidth();
+        int height = original.getHeight();
+        
+        if (width <= maxSize && height <= maxSize) {
+            return original;
+        }
+        
+        double scale = Math.min((double) maxSize / width, (double) maxSize / height);
+        int newWidth = (int) (width * scale);
+        int newHeight = (int) (height * scale);
+        
+        BufferedImage resized = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2d = resized.createGraphics();
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2d.drawImage(original, 0, 0, newWidth, newHeight, null);
+        g2d.dispose();
+        
+        return resized;
+    }
+
+    private String resolveVisionModel(String preferred) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:11434/api/tags"))
+                    .GET()
+                    .timeout(Duration.ofSeconds(2))
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                String json = response.body();
+                List<String> models = new ArrayList<>();
+                // Extract model names
+                int index = 0;
+                while ((index = json.indexOf("\"name\":\"", index)) != -1) {
+                    index += 8; 
+                    int end = json.indexOf("\"", index);
+                    if (end != -1) {
+                        String name = json.substring(index, end);
+                        models.add(name);
+                        index = end;
+                    }
+                }
+                
+                if (models.isEmpty()) {
+                    System.err.println("OllamaService: No models found in Ollama");
+                    return null;
+                }
+
+                // Known vision models in Ollama
+                String[] visionModelKeywords = {"llava", "llama3.2-vision", "qwen2.5-vl", "qwen2-vl", "phi4-mini", "vision", "visual", "moondream"};
+                
+                // 1. Check exact match with preferred if it's a vision model
+                if (models.contains(preferred)) {
+                    String lowerPreferred = preferred.toLowerCase();
+                    boolean isVision = false;
+                    for (String keyword : visionModelKeywords) {
+                        if (lowerPreferred.contains(keyword.toLowerCase())) {
+                            isVision = true;
+                            break;
+                        }
+                    }
+                    if (isVision) return preferred;
+                }
+                
+                // 2. Check for vision-capable models
+                for (String m : models) {
+                    String lowerM = m.toLowerCase();
+                    for (String keyword : visionModelKeywords) {
+                        if (lowerM.contains(keyword.toLowerCase())) {
+                            System.out.println("OllamaService: Selected vision model: " + m);
+                            return m;
+                        }
+                    }
+                }
+                
+                // 3. No vision model found - return null to indicate failure
+                System.err.println("OllamaService: No vision models found. Available: " + models);
+                System.err.println("OllamaService: Please install a vision model like 'llava' or 'llama3.2-vision'");
+                return null;
+            }
+        } catch (Exception e) {
+            System.err.println("OllamaService: Error checking for vision models: " + e.getMessage());
+        }
+        return null;
     }
 
     private String resolveModel(String preferred) {
