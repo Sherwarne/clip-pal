@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class App extends JFrame {
     private final JPanel contentPanel = new JPanel(null);
@@ -629,6 +630,7 @@ public class App extends JFrame {
     private JButton settingsButton;
 
     private OcrService ocrService;
+    private OllamaService ollamaService;
     private ConfigManager configManager = new ConfigManager();
 
     // Sleek Modern Fonts
@@ -672,6 +674,7 @@ public class App extends JFrame {
 
     public App() {
         ocrService = new OcrService();
+        ollamaService = new OllamaService(configManager);
         updateThemeUIManager();
         updateFormatter();
         setTitle("Clip-Pal");
@@ -821,8 +824,30 @@ public class App extends JFrame {
         });
         settingsButton.addActionListener(e -> showSettingsPopup());
 
+        JButton helpButton = new JButton("?");
+        helpButton.setToolTipText("Help Guide");
+        helpButton.setOpaque(false);
+        helpButton.setContentAreaFilled(false);
+        helpButton.setFocusPainted(false);
+        helpButton.setBorder(null);
+        helpButton.setFont(getAppFont("Roboto Black", Font.BOLD, 18));
+        helpButton.setForeground(getThemeColor("textSecondary"));
+        helpButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        helpButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                helpButton.setForeground(getThemeColor("textPrimary"));
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                helpButton.setForeground(getThemeColor("textSecondary"));
+            }
+        });
+        helpButton.addActionListener(e -> showHelpPopup());
+
         JPanel rightHeaderPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
         rightHeaderPanel.setOpaque(false);
+        rightHeaderPanel.add(helpButton);
         rightHeaderPanel.add(settingsButton);
         rightHeaderPanel.add(clearButton);
 
@@ -953,6 +978,19 @@ public class App extends JFrame {
 
             refreshUI();
             saveClipboardState();
+
+            // Trigger AI Caption if enabled
+            if (configManager.isAiCaptionEnabled() && item.getType() == ClipboardItem.Type.TEXT) {
+                ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                    if (caption != null && !caption.isEmpty()) {
+                        item.setCaption(caption);
+                        SwingUtilities.invokeLater(() -> {
+                            refreshUI(); 
+                            saveClipboardState();
+                        });
+                    }
+                });
+            }
         });
     }
 
@@ -1244,6 +1282,10 @@ public class App extends JFrame {
             } else {
                 // Existing card, update target
                 card.setTargetBounds(x, y, cardWidth, cardHeight);
+                // Update tooltip if caption changed
+                if (item.getCaption() != null && !item.getCaption().isEmpty()) {
+                    card.setToolTipText(item.getCaption());
+                }
             }
         }
 
@@ -1318,6 +1360,29 @@ public class App extends JFrame {
                         activeTabIndex = loadedActiveIndex;
                     } else {
                         activeTabIndex = 0;
+                    }
+                    
+                    // Trigger AI generation for missing captions
+                    if (configManager.isAiCaptionEnabled()) {
+                        System.out.println("Checking for missing captions...");
+                        int missingCount = 0;
+                        for (ClipboardTab tab : tabs) {
+                            for (ClipboardItem item : tab.items) {
+                                if (item.getType() == ClipboardItem.Type.TEXT && item.getCaption() == null) {
+                                    missingCount++;
+                                    ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                                        if (caption != null && !caption.isEmpty()) {
+                                            item.setCaption(caption);
+                                            SwingUtilities.invokeLater(() -> {
+                                                refreshUI(); 
+                                                saveClipboardState();
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                        System.out.println("Found " + missingCount + " items missing captions.");
                     }
                 }
             }
@@ -1395,6 +1460,10 @@ public class App extends JFrame {
         AnimatedCard card = new AnimatedCard(new BorderLayout(10, 5));
         card.setPreferredSize(new Dimension(cardWidth, cardHeight));
         card.setBorder(new EmptyBorder(8, 12, 8, 12));
+        
+        if (item.getCaption() != null && !item.getCaption().isEmpty()) {
+            card.setToolTipText(item.getCaption());
+        }
 
         // Header Section (Time + Controls)
         JPanel headerPanel = new JPanel(new BorderLayout());
@@ -1953,6 +2022,10 @@ public class App extends JFrame {
                 details.add(new String[] { "Duration", item.getFormattedDuration() });
             }
         }
+        
+        if (item.getCaption() != null && !item.getCaption().isEmpty()) {
+            // Caption handled separately below to allow wrapping
+        }
 
         for (String[] detail : details) {
             JLabel key = new JLabel(detail[0]);
@@ -1967,7 +2040,38 @@ public class App extends JFrame {
             metaPanel.add(val);
         }
 
-        mainPanel.add(metaPanel, BorderLayout.NORTH);
+        JPanel topContainer = new JPanel();
+        topContainer.setLayout(new BoxLayout(topContainer, BoxLayout.Y_AXIS));
+        topContainer.setOpaque(false);
+        topContainer.add(metaPanel);
+
+        if (item.getCaption() != null && !item.getCaption().isEmpty()) {
+            JPanel captionPanel = new JPanel(new BorderLayout(10, 5));
+            captionPanel.setOpaque(false);
+            captionPanel.setBorder(new EmptyBorder(10, 0, 0, 0)); // Top margin
+
+            JLabel captionTitle = new JLabel("AI Caption");
+            captionTitle.setForeground(getThemeColor("textSecondary"));
+            captionTitle.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+            
+            JTextArea captionText = new JTextArea(item.getCaption());
+            captionText.setLineWrap(true);
+            captionText.setWrapStyleWord(true);
+            captionText.setEditable(false);
+            captionText.setOpaque(false);
+            captionText.setForeground(getThemeColor("generalText"));
+            captionText.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+            // Important: set columns to limit preferred width calculation
+            captionText.setColumns(40); 
+            captionText.setBorder(BorderFactory.createEmptyBorder());
+
+            captionPanel.add(captionTitle, BorderLayout.NORTH);
+            captionPanel.add(captionText, BorderLayout.CENTER);
+            
+            topContainer.add(captionPanel);
+        }
+
+        mainPanel.add(topContainer, BorderLayout.NORTH);
 
         // Preview
         boolean showAsText = item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL;
@@ -2029,6 +2133,41 @@ public class App extends JFrame {
 
             JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
             btnPanel.setOpaque(false);
+            
+            // Add Generate Caption Button if no caption exists or to regenerate
+            if (configManager.isAiCaptionEnabled()) {
+                JButton captionBtn = new JButton("Generate Caption");
+                captionBtn.setBackground(getThemeColor("buttonBackground"));
+                captionBtn.setForeground(getThemeColor("buttonText"));
+                captionBtn.setFocusPainted(false);
+                captionBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
+                captionBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                captionBtn.addActionListener(e -> {
+                    captionBtn.setEnabled(false);
+                    captionBtn.setText("Generating...");
+                    ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                         SwingUtilities.invokeLater(() -> {
+                             if (caption != null && !caption.isEmpty()) {
+                                 item.setCaption(caption);
+                                 saveClipboardState();
+                                 refreshUI();
+                                 dialog.dispose();
+                                 showInfoPopup(item); // Reopen to show new caption
+                             } else {
+                                 captionBtn.setText("Failed / Offline");
+                                 Timer t = new Timer(2000, evt -> {
+                                     captionBtn.setText("Generate Caption");
+                                     captionBtn.setEnabled(true);
+                                 });
+                                 t.setRepeats(false);
+                                 t.start();
+                             }
+                         });
+                    });
+                });
+                btnPanel.add(captionBtn);
+                btnPanel.add(Box.createHorizontalStrut(10));
+            }
             
             JButton searchBtn = new JButton("Search Web");
             searchBtn.setBackground(getThemeColor("buttonBackground"));
@@ -2254,6 +2393,74 @@ public class App extends JFrame {
         dialog.setVisible(true);
     }
 
+    private void showHelpPopup() {
+        JDialog dialog = new JDialog(this, "Help Guide", true);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(getThemeColor("bgMain"));
+
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setOpaque(false);
+        contentPanel.setBorder(new EmptyBorder(30, 40, 30, 40));
+
+        JLabel headerLabel = new JLabel("Help Guide");
+        headerLabel.setForeground(getThemeColor("textPrimary"));
+        headerLabel.setFont(getAppFont(FONT_FAMILY_TITLE, Font.BOLD, 24));
+        headerLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        contentPanel.add(headerLabel);
+        contentPanel.add(Box.createVerticalStrut(25));
+
+        JTextArea helpText = new JTextArea();
+        helpText.setEditable(false);
+        helpText.setLineWrap(true);
+        helpText.setWrapStyleWord(true);
+        helpText.setOpaque(false);
+        helpText.setForeground(getThemeColor("generalText"));
+        helpText.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        helpText.setText(
+            "Welcome to Virtual Clipboard!\n\n" +
+            "Shortcuts:\n" +
+            "- Ctrl+Shift+V: Open Clipboard (Global)\n" +
+            "- Esc: Close Clipboard\n\n" +
+            "Features:\n" +
+            "- Tabs: Organize your clips into tabs. Use drag & drop to reorder.\n" +
+            "- Search: Filter items by text or type.\n" +
+            "- AI Captions: Enable Ollama integration in Settings to auto-generate captions for text entries.\n" +
+            "- Smart Paste: Double-click an item to paste it.\n" +
+            "- Drag & Drop: Drag files or text into the window to add them.\n\n" +
+            "AI Integration (Ollama):\n" +
+            "- Requires Ollama to be installed and running locally.\n" +
+            "- Default model: llama3 (configurable in Settings).\n" +
+            "- Captions appear as tooltips and in 'More Info'.\n" +
+            "- You can manually regenerate captions in 'More Info' or bulk generate in Settings."
+        );
+        
+        contentPanel.add(helpText);
+        contentPanel.add(Box.createVerticalStrut(30));
+
+        JButton closeBtn = new JButton("Close");
+        closeBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        closeBtn.setBackground(getThemeColor("buttonBackground"));
+        closeBtn.setForeground(getThemeColor("buttonText"));
+        closeBtn.setFocusPainted(false);
+        closeBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        closeBtn.setBorder(new EmptyBorder(10, 25, 10, 25));
+        closeBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        closeBtn.addActionListener(e -> dialog.dispose());
+        contentPanel.add(closeBtn);
+
+        JScrollPane scrollPane = new JScrollPane(contentPanel);
+        scrollPane.setBorder(null);
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+
+        dialog.add(scrollPane, BorderLayout.CENTER);
+        dialog.setSize(500, 600);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
     private void showSettingsPopup() {
         Color bgMain = getThemeColor("bgMain");
         Color accent = getThemeColor("accent");
@@ -2361,6 +2568,182 @@ public class App extends JFrame {
         contentPanel.add(Box.createVerticalStrut(10));
         contentPanel.add(use24HourTimeCheck);
         
+        // AI Settings
+        contentPanel.add(Box.createVerticalStrut(10));
+        JCheckBox aiCaptionCheck = createSettingCheckbox("Enable AI Captions (Ollama)", configManager.isAiCaptionEnabled(), textPrimary);
+        contentPanel.add(aiCaptionCheck);
+        contentPanel.add(Box.createVerticalStrut(5));
+        
+        contentPanel.add(createSettingLabel("Ollama Model", textSecondary));
+        // Initialize with config model, then update asynchronously
+        JComboBox<String> ollamaModelCombo = new JComboBox<>(new String[]{ configManager.getOllamaModel() });
+        ollamaModelCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        ollamaModelCombo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        ollamaModelCombo.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        ollamaModelCombo.setBackground(getThemeColor("inputBackground"));
+        ollamaModelCombo.setForeground(getThemeColor("inputText"));
+        ollamaModelCombo.setBorder(new EmptyBorder(5, 10, 5, 10));
+        
+        // Custom Renderer to ensure theme colors are applied to the dropdown list
+        ollamaModelCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                
+                if (isSelected) {
+                    if (configManager.isHighContrast()) {
+                        setBackground(getThemeColor("bgMain"));
+                        setForeground(getThemeColor("accent"));
+                    } else {
+                        setBackground(getThemeColor("accent"));
+                        setForeground(getThemeColor("buttonText"));
+                    }
+                } else {
+                    setBackground(getThemeColor("inputBackground"));
+                    setForeground(getThemeColor("inputText"));
+                }
+                setBorder(new EmptyBorder(5, 10, 5, 10));
+                return this;
+            }
+        });
+
+        ollamaService.getAvailableModels().thenAccept(models -> {
+            SwingUtilities.invokeLater(() -> {
+                String current = (String) ollamaModelCombo.getSelectedItem();
+                ollamaModelCombo.removeAllItems();
+                if (models.isEmpty()) {
+                    ollamaModelCombo.addItem(current);
+                } else {
+                    for (String m : models) ollamaModelCombo.addItem(m);
+                    if (models.contains(current)) {
+                        ollamaModelCombo.setSelectedItem(current);
+                    } else {
+                        // If current not in list, try to find a match or default to first
+                        boolean found = false;
+                        for (String m : models) {
+                             if (m.contains(current)) {
+                                 ollamaModelCombo.setSelectedItem(m);
+                                 found = true;
+                                 break;
+                             }
+                        }
+                        if (!found && !models.isEmpty()) {
+                            ollamaModelCombo.setSelectedIndex(0);
+                        }
+                    }
+                }
+            });
+        });
+
+        ollamaModelCombo.setEnabled(aiCaptionCheck.isSelected());
+        aiCaptionCheck.addActionListener(e -> ollamaModelCombo.setEnabled(aiCaptionCheck.isSelected()));
+        contentPanel.add(ollamaModelCombo);
+
+        contentPanel.add(Box.createVerticalStrut(10));
+
+        // Ollama Status and Actions
+        JPanel ollamaStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        ollamaStatusPanel.setOpaque(false);
+        ollamaStatusPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel statusLabel = new JLabel("Status: Checking...");
+        statusLabel.setForeground(textSecondary);
+        statusLabel.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 12));
+        ollamaStatusPanel.add(statusLabel);
+
+        contentPanel.add(ollamaStatusPanel);
+        contentPanel.add(Box.createVerticalStrut(5));
+
+        JButton generateAllBtn = new JButton("Generate Captions for All Entries");
+        generateAllBtn.setBackground(getThemeColor("inputBackground"));
+        generateAllBtn.setForeground(getThemeColor("inputText"));
+        generateAllBtn.setFocusPainted(false);
+        generateAllBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 12));
+        generateAllBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
+        generateAllBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        generateAllBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        generateAllBtn.setEnabled(false); // Disabled until status checked
+        
+        generateAllBtn.addActionListener(e -> {
+            generateAllBtn.setEnabled(false);
+            
+            // Count items first
+            int totalItems = 0;
+            List<ClipboardItem> itemsToProcess = new ArrayList<>();
+            
+            for (ClipboardTab tab : tabs) {
+                for (ClipboardItem item : tab.items) {
+                    if (item.getType() == ClipboardItem.Type.TEXT && (item.getCaption() == null || item.getCaption().isEmpty())) {
+                        totalItems++;
+                        itemsToProcess.add(item);
+                    }
+                }
+            }
+            
+            if (totalItems == 0) {
+                 generateAllBtn.setText("No items needed captions.");
+                 Timer t = new Timer(2000, evt -> {
+                     generateAllBtn.setText("Generate Captions for All Entries");
+                     generateAllBtn.setEnabled(true);
+                 });
+                 t.setRepeats(false);
+                 t.start();
+                 return;
+            }
+
+            generateAllBtn.setText("Generating... (0/" + totalItems + ")");
+            AtomicInteger completedCount = new AtomicInteger(0);
+            int finalTotal = totalItems;
+
+            for (ClipboardItem item : itemsToProcess) {
+                ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                    int current = completedCount.incrementAndGet();
+                    SwingUtilities.invokeLater(() -> {
+                        generateAllBtn.setText("Generating... (" + current + "/" + finalTotal + ")");
+                        if (caption != null && !caption.isEmpty()) {
+                            item.setCaption(caption);
+                            refreshUI();
+                            saveClipboardState(); 
+                        }
+                        
+                        if (current == finalTotal) {
+                             generateAllBtn.setText("Completed " + finalTotal + " items.");
+                             Timer t = new Timer(3000, evt -> {
+                                 generateAllBtn.setText("Generate Captions for All Entries");
+                                 generateAllBtn.setEnabled(true);
+                             });
+                             t.setRepeats(false);
+                             t.start();
+                        }
+                    });
+                });
+            }
+        });
+
+        contentPanel.add(generateAllBtn);
+        
+        // Check Status
+        ollamaService.checkConnection().thenAccept(isRunning -> {
+            SwingUtilities.invokeLater(() -> {
+                if (isRunning) {
+                    statusLabel.setText("Status: Connected (Ollama Running)");
+                    statusLabel.setForeground(new Color(0, 150, 0)); // Green
+                    if (configManager.isHighContrast()) statusLabel.setForeground(getThemeColor("accent"));
+                    generateAllBtn.setEnabled(aiCaptionCheck.isSelected());
+                } else {
+                    statusLabel.setText("Status: Disconnected (Ollama Not Detected)");
+                    statusLabel.setForeground(Color.RED);
+                    if (configManager.isHighContrast()) statusLabel.setForeground(Color.RED);
+                    generateAllBtn.setEnabled(false);
+                }
+            });
+        });
+        
+        aiCaptionCheck.addActionListener(e -> {
+            ollamaModelCombo.setEnabled(aiCaptionCheck.isSelected());
+            generateAllBtn.setEnabled(aiCaptionCheck.isSelected() && statusLabel.getText().contains("Connected"));
+        });
+        
         contentPanel.add(Box.createVerticalStrut(40));
 
         // Action Buttons
@@ -2390,6 +2773,8 @@ public class App extends JFrame {
             configManager.setDynamicResizing(dynamicResizingCheck.isSelected());
             configManager.setUse24HourTime(use24HourTimeCheck.isSelected());
             configManager.setHighContrast(highContrastCheck.isSelected());
+            configManager.setAiCaptionEnabled(aiCaptionCheck.isSelected());
+            configManager.setOllamaModel((String) ollamaModelCombo.getSelectedItem());
             
             if (configManager.isAutoSortByDate()) {
                  for (ClipboardTab t : tabs) {
@@ -2793,6 +3178,10 @@ public class App extends JFrame {
         preview.setFocusable(false);
         preview.setMargin(new Insets(0, 0, 0, 0));
         preview.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        
+        if (item.getCaption() != null && !item.getCaption().isEmpty()) {
+            preview.setToolTipText(item.getCaption());
+        }
         
         if (item.getType() == ClipboardItem.Type.URL) {
             preview.setForeground(getThemeColor("accent"));

@@ -98,6 +98,22 @@ public class ConfigManager {
         properties.setProperty("autoStart", String.valueOf(enabled));
     }
 
+    public boolean isAiCaptionEnabled() {
+        return Boolean.parseBoolean(properties.getProperty("aiCaptionEnabled", "true"));
+    }
+
+    public void setAiCaptionEnabled(boolean enabled) {
+        properties.setProperty("aiCaptionEnabled", String.valueOf(enabled));
+    }
+
+    public String getOllamaModel() {
+        return properties.getProperty("ollamaModel", "llama3");
+    }
+
+    public void setOllamaModel(String model) {
+        properties.setProperty("ollamaModel", model);
+    }
+
     public boolean isAutoSortByDate() {
         return Boolean.parseBoolean(properties.getProperty("autoSortByDate", "true"));
     }
