@@ -28,6 +28,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.awt.Desktop;
 import java.awt.font.TextAttribute;
+import java.awt.geom.Path2D;
 import java.time.format.DateTimeFormatter;
 import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.util.Map;
@@ -76,8 +77,7 @@ public class App extends JFrame {
                     Graphics2D g2 = (Graphics2D) g.create();
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     g2.setColor(getThemeColor("inputBackground"));
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                    
+                    g2.fill(createTrapezoidShape(getWidth(), getHeight()));
                     g2.dispose();
                 }
             };
@@ -85,6 +85,26 @@ public class App extends JFrame {
             
             animationTimer = new Timer(16, e -> animate());
             animationTimer.start();
+        }
+
+        public Shape createTrapezoidShape(int w, int h) {
+            Path2D path = new Path2D.Float();
+            float arc = 12f;
+            float slant = 14f;
+
+            // Start from bottom left
+            path.moveTo(0, h);
+            // Line to top left (with slant and arc)
+            path.lineTo(slant - arc/2, arc);
+            path.quadTo(slant, 0, slant + arc, 0);
+            // Line to top right
+            path.lineTo(w - slant - arc, 0);
+            path.quadTo(w - slant, 0, w - slant + arc/2, arc);
+            // Line to bottom right
+            path.lineTo(w, h);
+            path.closePath();
+
+            return path;
         }
         
         @Override
@@ -106,8 +126,8 @@ public class App extends JFrame {
         
         private void animate() {
             boolean changed = false;
-            float speed = 0.2f;
-            float threshold = 0.5f;
+            float speed = 0.25f;
+            float threshold = 0.1f;
 
             int panelWidth = getWidth();
             if (panelWidth == 0) return; // Not laid out yet
@@ -136,36 +156,36 @@ public class App extends JFrame {
                 int targetX = currentX;
                 int targetW = targetTabWidth;
 
+                int btnH = Math.max(40, btn.getHeight());
                 if (i == draggedIndex) {
-                    // Skip animating dragged button X, handled by mouse drag
-                    // But maybe animate width? 
-                    // Let's animate width even if dragged
-                    if (Math.abs(btn.getWidth() - targetW) > threshold) {
-                         btn.setSize(btn.getWidth() + (int)((targetW - btn.getWidth()) * speed), btn.getHeight());
+                    if (Math.abs(btn.getWidth() - targetW) > threshold || Math.abs(btn.getHeight() - btnH) > threshold) {
+                         btn.setSize(btn.getWidth() + (int)((targetW - btn.getWidth()) * speed),
+                                     btn.getHeight() + (int)((btnH - btn.getHeight()) * speed));
                          changed = true;
                     } else {
-                         btn.setSize(targetW, btn.getHeight());
+                         btn.setSize(targetW, btnH);
                     }
                 } else {
                     int btnX = btn.getX();
                     int btnY = btn.getY();
                     int btnW = btn.getWidth();
-                    int targetY = Math.max(0, (getHeight() - btn.getHeight()) / 2);
+                    int targetY = getHeight() - btnH;
                     
                     if (Math.abs(btnX - targetX) > threshold || Math.abs(btnY - targetY) > threshold) {
-                        int newX = (Math.abs(btnX - targetX) > threshold) ? btnX + (int)((targetX - btnX) * speed) : targetX;
-                        int newY = (Math.abs(btnY - targetY) > threshold) ? btnY + (int)((targetY - btnY) * speed) : targetY;
+                        int newX = btnX + (int)((targetX - btnX) * speed);
+                        int newY = btnY + (int)((targetY - btnY) * speed);
                         btn.setLocation(newX, newY);
                         changed = true;
                     } else {
                         btn.setLocation(targetX, targetY);
                     }
                     
-                    if (Math.abs(btnW - targetW) > threshold) {
-                        btn.setSize(btnW + (int)((targetW - btnW) * speed), btn.getHeight());
+                    if (Math.abs(btnW - targetW) > threshold || Math.abs(btn.getHeight() - btnH) > threshold) {
+                        btn.setSize(btnW + (int)((targetW - btnW) * speed),
+                                     btn.getHeight() + (int)((btnH - btn.getHeight()) * speed));
                         changed = true;
                     } else {
-                        btn.setSize(targetW, btn.getHeight());
+                        btn.setSize(targetW, btnH);
                     }
                 }
                 
@@ -197,8 +217,10 @@ public class App extends JFrame {
                 Math.abs(highlightBounds.width - targetHighlightBounds.width) > threshold) {
                 highlightBounds.x += (targetHighlightBounds.x - highlightBounds.x) * speed;
                 highlightBounds.width += (targetHighlightBounds.width - highlightBounds.width) * speed;
-                highlightBounds.y = targetHighlightBounds.y;
-                highlightBounds.height = targetHighlightBounds.height;
+
+                // Animate Y and Height too for smoother entry/exit
+                highlightBounds.y += (targetHighlightBounds.y - highlightBounds.y) * speed;
+                highlightBounds.height += (targetHighlightBounds.height - highlightBounds.height) * speed;
                 changed = true;
             } else {
                 highlightBounds.setBounds(targetHighlightBounds);
@@ -284,13 +306,14 @@ public class App extends JFrame {
                 
                 JButton btn = createTabButton(tab, i, isActive);
                 // Calculate size immediately for layout
+                int btnH = Math.max(40, btn.getPreferredSize().height);
                 if (targetW > 0) {
-                    btn.setSize(targetW, btn.getPreferredSize().height);
+                    btn.setSize(targetW, btnH);
                 } else {
-                    btn.setSize(btn.getPreferredSize());
+                    btn.setSize(btn.getPreferredSize().width, btnH);
                 }
                 
-                int y = Math.max(0, (54 - btn.getHeight()) / 2);
+                int y = 54 - btn.getHeight();
                 btn.setLocation(x, y);
                 
                 tabButtons.add(btn);
@@ -316,7 +339,7 @@ public class App extends JFrame {
                     queueTabSwitch(tabs.size() - 1);
                 });
                 addButton.setSize(30, 30); // fixed size
-                addButton.setLocation(x, (54 - 30) / 2);
+                addButton.setLocation(x, 54 - 30 - 8);
                 add(addButton);
             } else {
                 addButton = null;
@@ -338,17 +361,52 @@ public class App extends JFrame {
                         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                         
                         // Subtle dark background for inactive tabs
-                        Color inactiveBg = new Color(0, 0, 0, 30);
+                        Color inactiveBg = new Color(0, 0, 0, 40);
                         if ("Twilight".equals(configManager.getTheme())) {
-                             inactiveBg = new Color(0, 0, 0, 40); // Slightly darker for Twilight
+                             inactiveBg = new Color(0, 0, 0, 60); // Slightly darker for Twilight
                         }
                         g2.setColor(inactiveBg);
-                        g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                        g2.fill(tabsPanel.createTrapezoidShape(getWidth(), getHeight()));
                         g2.dispose();
                     }
                     super.paintComponent(g);
                 }
             };
+
+            // Close button logic
+            FlatSVGIcon closeIcon = new FlatSVGIcon("com/virtualclipboard/icons/close.svg", 12, 12);
+            JButton closeBtn = new JButton(closeIcon);
+            closeBtn.setContentAreaFilled(false);
+            closeBtn.setBorder(null);
+            closeBtn.setFocusPainted(false);
+            closeBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            closeBtn.setVisible(false); // Only show on hover
+
+            if (isActive && !configManager.isHighContrast() && "Twilight".equals(configManager.getTheme())) {
+                closeIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("bgMain")));
+            } else {
+                closeIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
+            }
+
+            closeBtn.addActionListener(e -> {
+                showConfirmationDialog("Delete Tab", "Delete tab '" + tab.name + "' and its items?", () -> {
+                    boolean wasActive = (tabs.indexOf(tab) == activeTabIndex);
+                    tabs.remove(tab);
+                    if (activeTabIndex >= tabs.size()) activeTabIndex = 0;
+
+                    refreshTabsUI();
+
+                    if (wasActive) {
+                        refreshUI();
+                    }
+                });
+            });
+
+            tabBtn.setLayout(new BorderLayout());
+            JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+            rightPanel.setOpaque(false);
+            rightPanel.add(closeBtn);
+            tabBtn.add(rightPanel, BorderLayout.EAST);
             
             if (tab.iconValue != null) {
                 if (tab.isEmoji) {
@@ -373,7 +431,7 @@ public class App extends JFrame {
             }
 
             if (isActive) {
-                tabBtn.setFont(getAppFont("Roboto Black", Font.PLAIN, 14));
+                tabBtn.setFont(getAppFont("Roboto Black", Font.BOLD, 14));
             } else {
                 tabBtn.setFont(getAppFont("Roboto", Font.PLAIN, 14));
             }
@@ -388,18 +446,25 @@ public class App extends JFrame {
             tabBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             tabBtn.setHorizontalAlignment(SwingConstants.CENTER);
             
-            // Click handler logic is now in mouseReleased to avoid conflict with drag
-            /*
-            tabBtn.addActionListener(e -> {
-                int currentIdx = getButtonIndex(tabBtn);
-                if (activeTabIndex != currentIdx && currentIdx != -1) {
-                    activeTabIndex = currentIdx;
-                    refreshTabsUI();
-                    refreshUI();
+            // Hover logic for close button using a single MouseListener to avoid flicker
+            MouseAdapter tabHoverAdapter = new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    if (tabs.size() > 1) {
+                        closeBtn.setVisible(true);
+                    }
                 }
-            });
-            */
-            
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    if (tabBtn.getMousePosition(true) == null) {
+                        closeBtn.setVisible(false);
+                    }
+                }
+            };
+            tabBtn.addMouseListener(tabHoverAdapter);
+            closeBtn.addMouseListener(tabHoverAdapter);
+
             // Context menu logic
             JPopupMenu tabMenu = new JPopupMenu();
             // Explicit border to ensure dynamic theme update
@@ -617,6 +682,7 @@ public class App extends JFrame {
     private final List<ClipboardTab> tabs = new ArrayList<>();
     private int activeTabIndex = 0;
     private TabsPanel tabsPanel; // UI Container for tabs
+    private JPanel searchPanel;
     private JTextField searchField;
     private JComboBox<String> searchScopeCombo;
     private String searchQuery = "";
@@ -711,8 +777,9 @@ public class App extends JFrame {
         headerPanel.add(brandPanel, BorderLayout.WEST);
 
         // Search Section
-        JPanel searchPanel = new JPanel(new BorderLayout());
-        searchPanel.setOpaque(false);
+        searchPanel = new JPanel(new BorderLayout());
+        searchPanel.setOpaque(true);
+        searchPanel.setBackground(getThemeColor("inputBackground"));
         searchPanel.setBorder(new EmptyBorder(10, 20, 10, 20));
 
         searchField = new JTextField();
@@ -765,7 +832,13 @@ public class App extends JFrame {
         centerHeader.setBorder(new EmptyBorder(0, 20, 0, 0));
 
         headerPanel.add(centerHeader, BorderLayout.CENTER);
-        headerPanel.add(searchPanel, BorderLayout.SOUTH);
+
+        JPanel searchPanelWrapper = new JPanel(new BorderLayout());
+        searchPanelWrapper.setOpaque(false);
+        searchPanelWrapper.setBorder(new EmptyBorder(0, 0, 0, 0));
+        searchPanelWrapper.add(searchPanel, BorderLayout.CENTER);
+
+        headerPanel.add(searchPanelWrapper, BorderLayout.SOUTH);
 
         trashIcon = new FlatSVGIcon("com/virtualclipboard/icons/trashcan.svg", 24, 24);
         trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
@@ -3119,6 +3192,10 @@ public class App extends JFrame {
         Color bgMain = getThemeColor("bgMain");
         getContentPane().setBackground(bgMain);
         
+        if (searchPanel != null) {
+            searchPanel.setBackground(getThemeColor("inputBackground"));
+        }
+
         updateThemeUIManager();
         SwingUtilities.updateComponentTreeUI(this);
         
