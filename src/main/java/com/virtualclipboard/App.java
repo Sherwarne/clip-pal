@@ -54,22 +54,22 @@ public class App extends JFrame {
         private final Rectangle highlightBounds = new Rectangle();
         private final Rectangle targetHighlightBounds = new Rectangle();
         private Timer animationTimer;
-        
+
         private int draggedIndex = -1;
         private int dragOffsetX = 0;
-        
+
         private boolean hasDragged = false;
         private int dragStartScreenX;
-        
+
         private int currentTabWidth = 100; // Store for drag calculation
-        
+
         private final JComponent highlightComponent;
         private boolean isHighlightRaised = false;
 
         public TabsPanel() {
             super(null);
             setOpaque(false);
-            
+
             highlightComponent = new JComponent() {
                 @Override
                 protected void paintComponent(Graphics g) {
@@ -82,7 +82,7 @@ public class App extends JFrame {
                 }
             };
             add(highlightComponent);
-            
+
             animationTimer = new Timer(16, e -> animate());
             animationTimer.start();
         }
@@ -95,18 +95,18 @@ public class App extends JFrame {
             // Start from bottom left
             path.moveTo(0, h);
             // Line to top left (with slant and arc)
-            path.lineTo(slant - arc/2, arc);
+            path.lineTo(slant - arc / 2, arc);
             path.quadTo(slant, 0, slant + arc, 0);
             // Line to top right
             path.lineTo(w - slant - arc, 0);
-            path.quadTo(w - slant, 0, w - slant + arc/2, arc);
+            path.quadTo(w - slant, 0, w - slant + arc / 2, arc);
             // Line to bottom right
             path.lineTo(w, h);
             path.closePath();
 
             return path;
         }
-        
+
         @Override
         public Dimension getPreferredSize() {
             int w = 0;
@@ -123,32 +123,33 @@ public class App extends JFrame {
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
         }
-        
+
         private void animate() {
             boolean changed = false;
             float speed = 0.25f;
             float threshold = 0.1f;
 
             int panelWidth = getWidth();
-            if (panelWidth == 0) return; // Not laid out yet
+            if (panelWidth == 0)
+                return; // Not laid out yet
 
             // Calculate dynamic tab width
             int addButtonWidth = (addButton != null) ? 30 + 4 : 0;
             int totalSpacing = (tabButtons.size()) * 4; // 4px spacing
             int availableWidth = panelWidth - addButtonWidth - totalSpacing;
-            
+
             // Limit max width but ensure we fill if possible
             int targetTabWidth = 0;
             if (tabButtons.size() > 0) {
-                 targetTabWidth = availableWidth / tabButtons.size();
-                 // Optional: clamp max width if desired, e.g. 250
-                 targetTabWidth = Math.min(targetTabWidth, 250);
-                 // Ensure min width
-                 targetTabWidth = Math.max(targetTabWidth, 80);
+                targetTabWidth = availableWidth / tabButtons.size();
+                // Optional: clamp max width if desired, e.g. 250
+                targetTabWidth = Math.min(targetTabWidth, 250);
+                // Ensure min width
+                targetTabWidth = Math.max(targetTabWidth, 80);
             }
-            
+
             this.currentTabWidth = targetTabWidth;
-            
+
             // Layout buttons
             int currentX = 0;
             for (int i = 0; i < tabButtons.size(); i++) {
@@ -158,37 +159,38 @@ public class App extends JFrame {
 
                 int btnH = Math.max(40, btn.getHeight());
                 if (i == draggedIndex) {
-                    if (Math.abs(btn.getWidth() - targetW) > threshold || Math.abs(btn.getHeight() - btnH) > threshold) {
-                         btn.setSize(btn.getWidth() + (int)((targetW - btn.getWidth()) * speed),
-                                     btn.getHeight() + (int)((btnH - btn.getHeight()) * speed));
-                         changed = true;
+                    if (Math.abs(btn.getWidth() - targetW) > threshold
+                            || Math.abs(btn.getHeight() - btnH) > threshold) {
+                        btn.setSize(btn.getWidth() + (int) ((targetW - btn.getWidth()) * speed),
+                                btn.getHeight() + (int) ((btnH - btn.getHeight()) * speed));
+                        changed = true;
                     } else {
-                         btn.setSize(targetW, btnH);
+                        btn.setSize(targetW, btnH);
                     }
                 } else {
                     int btnX = btn.getX();
                     int btnY = btn.getY();
                     int btnW = btn.getWidth();
                     int targetY = getHeight() - btnH;
-                    
+
                     if (Math.abs(btnX - targetX) > threshold || Math.abs(btnY - targetY) > threshold) {
-                        int newX = btnX + (int)((targetX - btnX) * speed);
-                        int newY = btnY + (int)((targetY - btnY) * speed);
+                        int newX = btnX + (int) ((targetX - btnX) * speed);
+                        int newY = btnY + (int) ((targetY - btnY) * speed);
                         btn.setLocation(newX, newY);
                         changed = true;
                     } else {
                         btn.setLocation(targetX, targetY);
                     }
-                    
+
                     if (Math.abs(btnW - targetW) > threshold || Math.abs(btn.getHeight() - btnH) > threshold) {
-                        btn.setSize(btnW + (int)((targetW - btnW) * speed),
-                                     btn.getHeight() + (int)((btnH - btn.getHeight()) * speed));
+                        btn.setSize(btnW + (int) ((targetW - btnW) * speed),
+                                btn.getHeight() + (int) ((btnH - btn.getHeight()) * speed));
                         changed = true;
                     } else {
                         btn.setSize(targetW, btnH);
                     }
                 }
-                
+
                 // Update active highlight target
                 if (i == activeTabIndex) {
                     if (i == draggedIndex) {
@@ -198,23 +200,23 @@ public class App extends JFrame {
                         targetHighlightBounds.setBounds(targetX, btn.getY(), targetW, btn.getHeight());
                     }
                 }
-                
+
                 currentX += targetW + 4;
             }
-            
+
             if (addButton != null) {
                 int btnX = addButton.getX();
                 if (Math.abs(btnX - currentX) > threshold) {
-                    addButton.setLocation(btnX + (int)((currentX - btnX) * speed), addButton.getY());
+                    addButton.setLocation(btnX + (int) ((currentX - btnX) * speed), addButton.getY());
                     changed = true;
                 } else {
                     addButton.setLocation(currentX, addButton.getY());
                 }
             }
-            
+
             // Animate highlight
-            if (Math.abs(highlightBounds.x - targetHighlightBounds.x) > threshold || 
-                Math.abs(highlightBounds.width - targetHighlightBounds.width) > threshold) {
+            if (Math.abs(highlightBounds.x - targetHighlightBounds.x) > threshold ||
+                    Math.abs(highlightBounds.width - targetHighlightBounds.width) > threshold) {
                 highlightBounds.x += (targetHighlightBounds.x - highlightBounds.x) * speed;
                 highlightBounds.width += (targetHighlightBounds.width - highlightBounds.width) * speed;
 
@@ -225,14 +227,14 @@ public class App extends JFrame {
             } else {
                 highlightBounds.setBounds(targetHighlightBounds);
             }
-            
+
             highlightComponent.setBounds(highlightBounds);
             highlightComponent.repaint(); // Ensure it repaints
-            
+
             // Z-Order Management
             if (draggedIndex != -1 && draggedIndex < tabButtons.size()) {
                 JButton draggedBtn = tabButtons.get(draggedIndex);
-                
+
                 if (draggedIndex == activeTabIndex) {
                     // Dragging ACTIVE tab: It stays on top
                     // 1. Dragged Active Tab (Text) -> Z=0
@@ -248,7 +250,7 @@ public class App extends JFrame {
                     // 1. Active Tab (Text) -> Z=0
                     // 2. Highlight (Background) -> Z=1
                     // 3. Dragged Inactive Tab -> Z=2
-                    
+
                     if (activeTabIndex >= 0 && activeTabIndex < tabButtons.size()) {
                         JButton activeBtn = tabButtons.get(activeTabIndex);
                         if (getComponentZOrder(activeBtn) != 0) {
@@ -276,49 +278,52 @@ public class App extends JFrame {
                 }
                 isHighlightRaised = false;
             }
-            
-            if (changed) repaint();
+
+            if (changed)
+                repaint();
         }
-        
+
         public void refresh(List<ClipboardTab> tabs, int activeIndex) {
             // Only rebuild if tab count/names changed or forced
             // For now, simpler to rebuild but we lose drag state if we are not careful.
             // But refresh() is called on adding/removing tabs, not during drag.
-            
+
             removeAll();
             tabButtons.clear();
-            
+
             int panelWidth = getWidth();
             int targetW = -1;
             if (panelWidth > 0 && !tabs.isEmpty()) {
-                 int btnCount = tabs.size();
-                 int addButtonWidth = (btnCount < 10) ? 34 : 0;
-                 int availableWidth = panelWidth - addButtonWidth - (btnCount * 4);
-                 targetW = availableWidth / btnCount;
-                 targetW = Math.min(targetW, 250);
-                 targetW = Math.max(targetW, 80);
+                int btnCount = tabs.size();
+                int addButtonWidth = (btnCount < 10) ? 34 : 0;
+                int availableWidth = panelWidth - addButtonWidth - (btnCount * 4);
+                targetW = availableWidth / btnCount;
+                targetW = Math.min(targetW, 250);
+                targetW = Math.max(targetW, 80);
             }
-            
+
             int x = 0;
             for (int i = 0; i < tabs.size(); i++) {
                 ClipboardTab tab = tabs.get(i);
                 boolean isActive = (i == activeIndex);
-                
+
                 JButton btn = createTabButton(tab, i, isActive);
                 // Calculate size immediately for layout
                 int btnH = Math.max(40, btn.getPreferredSize().height);
                 if (targetW > 0) {
                     btn.setSize(targetW, btnH);
+                    currentTabWidth = targetW; // Added to fix dragging logic
                 } else {
                     btn.setSize(btn.getPreferredSize().width, btnH);
+                    currentTabWidth = btn.getWidth(); // Fallback to actual width
                 }
-                
-                int y = 54 - btn.getHeight();
+
+                int y = 54 - btn.getHeight(); // This keeps it flush with the bottom (assuming 54 is panel height)
                 btn.setLocation(x, y);
-                
+
                 tabButtons.add(btn);
                 add(btn);
-                
+
                 if (isActive) {
                     // If first load
                     if (highlightBounds.width == 0) {
@@ -326,12 +331,12 @@ public class App extends JFrame {
                     }
                     targetHighlightBounds.setBounds(x, y, btn.getWidth(), btn.getHeight());
                 }
-                
+
                 x += btn.getWidth() + 4;
             }
-            
+
             // Add button logic
-             if (tabs.size() < 10) {
+            if (tabs.size() < 10) {
                 addButton = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/plus.svg", 16, 16));
                 addButton.setToolTipText("New Tab");
                 addButton.addActionListener(e -> {
@@ -344,14 +349,14 @@ public class App extends JFrame {
             } else {
                 addButton = null;
             }
-            
+
             // Add highlight component last so it defaults to bottom
             add(highlightComponent);
-            
+
             revalidate();
             repaint();
         }
-        
+
         private JButton createTabButton(ClipboardTab tab, int index, boolean isActive) {
             JButton tabBtn = new JButton() {
                 @Override
@@ -359,11 +364,11 @@ public class App extends JFrame {
                     if (!isActive) {
                         Graphics2D g2 = (Graphics2D) g.create();
                         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                        
+
                         // Subtle dark background for inactive tabs
                         Color inactiveBg = new Color(0, 0, 0, 40);
                         if ("Twilight".equals(configManager.getTheme())) {
-                             inactiveBg = new Color(0, 0, 0, 60); // Slightly darker for Twilight
+                            inactiveBg = new Color(0, 0, 0, 60); // Slightly darker for Twilight
                         }
                         g2.setColor(inactiveBg);
                         g2.fill(tabsPanel.createTrapezoidShape(getWidth(), getHeight()));
@@ -392,7 +397,8 @@ public class App extends JFrame {
                 showConfirmationDialog("Delete Tab", "Delete tab '" + tab.name + "' and its items?", () -> {
                     boolean wasActive = (tabs.indexOf(tab) == activeTabIndex);
                     tabs.remove(tab);
-                    if (activeTabIndex >= tabs.size()) activeTabIndex = 0;
+                    if (activeTabIndex >= tabs.size())
+                        activeTabIndex = 0;
 
                     refreshTabsUI();
 
@@ -407,7 +413,7 @@ public class App extends JFrame {
             rightPanel.setOpaque(false);
             rightPanel.add(closeBtn);
             tabBtn.add(rightPanel, BorderLayout.EAST);
-            
+
             if (tab.iconValue != null) {
                 if (tab.isEmoji) {
                     tabBtn.setText(tab.iconValue + " " + tab.name);
@@ -440,12 +446,12 @@ public class App extends JFrame {
             } else {
                 tabBtn.setForeground(isActive ? getThemeColor("inputText") : getThemeColor("textSecondary"));
             }
-            tabBtn.setContentAreaFilled(false); 
+            tabBtn.setContentAreaFilled(false);
             tabBtn.setFocusPainted(false);
             tabBtn.setBorder(new EmptyBorder(5, 12, 5, 12));
             tabBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             tabBtn.setHorizontalAlignment(SwingConstants.CENTER);
-            
+
             // Hover logic for close button using a single MouseListener to avoid flicker
             MouseAdapter tabHoverAdapter = new MouseAdapter() {
                 @Override
@@ -468,18 +474,18 @@ public class App extends JFrame {
             // Context menu logic
             JPopupMenu tabMenu = new JPopupMenu();
             // Explicit border to ensure dynamic theme update
-            tabMenu.setBorder(new EmptyBorder(0,0,0,0));
-            
+            tabMenu.setBorder(new EmptyBorder(0, 0, 0, 0));
+
             JMenuItem changeIconItem = new JMenuItem("Change Icon...");
             changeIconItem.setBorder(new EmptyBorder(5, 10, 5, 10));
             changeIconItem.addActionListener(e -> showIconSelector(tab));
             tabMenu.add(changeIconItem);
-            
+
             // Sort Options
             JMenu sortMenu = new JMenu("Sort by...");
             sortMenu.setBorder(new EmptyBorder(5, 10, 5, 10)); // Fix alignment
-            sortMenu.getPopupMenu().setBorder(new EmptyBorder(0,0,0,0)); // Ensure sub-menu has no outline
-            
+            sortMenu.getPopupMenu().setBorder(new EmptyBorder(0, 0, 0, 0)); // Ensure sub-menu has no outline
+
             JMenuItem sortDateNewOld = new JMenuItem("Date (Newest First)");
             sortDateNewOld.setBorder(new EmptyBorder(5, 10, 5, 10));
             sortDateNewOld.addActionListener(e -> {
@@ -502,7 +508,7 @@ public class App extends JFrame {
                 sortItems(tab, (a, b) -> a.getType().toString().compareTo(b.getType().toString()));
             });
             sortMenu.add(sortTypeAZ);
-            
+
             JMenuItem sortTypeZA = new JMenuItem("Type (Z-A)");
             sortTypeZA.setBorder(new EmptyBorder(5, 10, 5, 10));
             sortTypeZA.addActionListener(e -> {
@@ -539,7 +545,7 @@ public class App extends JFrame {
                 }
             });
             tabMenu.add(renameItem);
-            
+
             if (tabs.size() > 1) {
                 JMenuItem deleteItem = new JMenuItem("Delete Tab");
                 deleteItem.setBorder(new EmptyBorder(5, 10, 5, 10));
@@ -547,21 +553,22 @@ public class App extends JFrame {
                     showConfirmationDialog("Delete Tab", "Delete tab '" + tab.name + "' and its items?", () -> {
                         boolean wasActive = (tabs.indexOf(tab) == activeTabIndex);
                         tabs.remove(tab);
-                        if (activeTabIndex >= tabs.size()) activeTabIndex = 0;
-                        
+                        if (activeTabIndex >= tabs.size())
+                            activeTabIndex = 0;
+
                         refreshTabsUI();
-                        
+
                         if (wasActive) {
                             // Unload current items first to reduce lag
                             contentPanel.removeAll();
                             cardMap.clear();
                             contentPanel.revalidate();
                             contentPanel.repaint();
-                            
+
                             // Load new items after a short delay
                             Timer t = new Timer(35, ev -> {
                                 refreshUI();
-                                ((Timer)ev.getSource()).stop();
+                                ((Timer) ev.getSource()).stop();
                             });
                             t.setRepeats(false);
                             t.start();
@@ -573,7 +580,7 @@ public class App extends JFrame {
                 tabMenu.add(deleteItem);
             }
             tabBtn.setComponentPopupMenu(tabMenu);
-            
+
             // Drag logic
             MouseAdapter ma = new MouseAdapter() {
                 @Override
@@ -588,7 +595,7 @@ public class App extends JFrame {
                         }
                     }
                 }
-                
+
                 @Override
                 public void mouseReleased(MouseEvent e) {
                     if (SwingUtilities.isLeftMouseButton(e)) {
@@ -603,36 +610,37 @@ public class App extends JFrame {
                         repaint();
                     }
                 }
-                
+
                 @Override
                 public void mouseDragged(MouseEvent e) {
                     if (SwingUtilities.isLeftMouseButton(e) && draggedIndex != -1) {
                         if (!hasDragged && Math.abs(e.getXOnScreen() - dragStartScreenX) > 5) {
                             hasDragged = true;
                         }
-                        
+
                         if (hasDragged) {
                             int newX = tabBtn.getX() + e.getX() - dragOffsetX;
                             // Clamp
                             newX = Math.max(0, Math.min(newX, getWidth() - tabBtn.getWidth()));
-                            int newY = Math.max(0, (getHeight() - tabBtn.getHeight()) / 2);
+                            // Restrict vertical movement and keep attached to bottom
+                            int newY = getHeight() - tabBtn.getHeight();
                             tabBtn.setLocation(newX, newY);
-                            
+
                             // Check for move to new slot based on static positions
                             int slotWidth = currentTabWidth + 4; // width + spacing
                             if (slotWidth > 0) {
                                 int centerX = newX + tabBtn.getWidth() / 2;
                                 int targetIndex = centerX / slotWidth;
                                 targetIndex = Math.max(0, Math.min(targetIndex, tabButtons.size() - 1));
-                                
+
                                 if (targetIndex != draggedIndex) {
                                     // Move item in list (not just swap) to preserve order
                                     ClipboardTab draggedTab = tabs.remove(draggedIndex);
                                     tabs.add(targetIndex, draggedTab);
-                                    
+
                                     JButton draggedBtn = tabButtons.remove(draggedIndex);
                                     tabButtons.add(targetIndex, draggedBtn);
-                                    
+
                                     // Update active index
                                     if (activeTabIndex == draggedIndex) {
                                         activeTabIndex = targetIndex;
@@ -644,7 +652,7 @@ public class App extends JFrame {
                                             activeTabIndex++;
                                         }
                                     }
-                                    
+
                                     draggedIndex = targetIndex;
                                 }
                             }
@@ -654,10 +662,10 @@ public class App extends JFrame {
             };
             tabBtn.addMouseListener(ma);
             tabBtn.addMouseMotionListener(ma);
-            
+
             return tabBtn;
         }
-        
+
         // Helper to find index dynamically
         private int getButtonIndex(JButton btn) {
             return tabButtons.indexOf(btn);
@@ -686,7 +694,7 @@ public class App extends JFrame {
     private JTextField searchField;
     private JComboBox<String> searchScopeCombo;
     private String searchQuery = "";
-    
+
     // UI Components that need theme updates
     private JLabel titleLabel;
     private FlatSVGIcon searchIcon;
@@ -708,7 +716,7 @@ public class App extends JFrame {
     private Font getAppFont(String name, int style, float size) {
         if ("Roboto".equalsIgnoreCase(name) || "Roboto Black".equalsIgnoreCase(name)) {
             String fontFile = "Roboto-Regular.ttf";
-            
+
             if ("Roboto Black".equalsIgnoreCase(name)) {
                 fontFile = "Roboto-Black.ttf";
             } else if ((style & Font.BOLD) != 0) {
@@ -817,7 +825,7 @@ public class App extends JFrame {
 
         // Tab Bar UI
         // Tab Bar UI
-        tabsPanel = new TabsPanel(); 
+        tabsPanel = new TabsPanel();
         // tabsPanel.setOpaque(false); // Handled in TabsPanel constructor
         tabs.add(new ClipboardTab("Main")); // Default tab
 
@@ -911,6 +919,7 @@ public class App extends JFrame {
             public void mouseEntered(MouseEvent e) {
                 helpButton.setForeground(getThemeColor("textPrimary"));
             }
+
             @Override
             public void mouseExited(MouseEvent e) {
                 helpButton.setForeground(getThemeColor("textSecondary"));
@@ -945,7 +954,6 @@ public class App extends JFrame {
         add(scrollPane, BorderLayout.CENTER);
 
         // Adaptive resize handling on frame removed in favor of viewport listener
-
 
         monitor = new ClipboardMonitor(this::addNewItem);
 
@@ -996,7 +1004,8 @@ public class App extends JFrame {
     }
 
     private void processDroppedFile(File file) {
-        if (file.isDirectory()) return;
+        if (file.isDirectory())
+            return;
 
         String name = file.getName().toLowerCase();
         try {
@@ -1009,7 +1018,8 @@ public class App extends JFrame {
                 if (img != null) {
                     addNewItem(new ClipboardItem(gifBytes, img.getWidth(), img.getHeight()));
                 }
-            } else if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".bmp")) {
+            } else if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")
+                    || name.endsWith(".bmp")) {
                 BufferedImage img = javax.imageio.ImageIO.read(file);
                 if (img != null) {
                     addNewItem(new ClipboardItem(img));
@@ -1058,7 +1068,7 @@ public class App extends JFrame {
                     if (caption != null && !caption.isEmpty()) {
                         item.setCaption(caption);
                         SwingUtilities.invokeLater(() -> {
-                            refreshUI(); 
+                            refreshUI();
                             saveClipboardState();
                         });
                     }
@@ -1079,7 +1089,7 @@ public class App extends JFrame {
     private final java.util.Queue<Integer> tabSwitchQueue = new java.util.LinkedList<>();
     private long lastSwitchTime = 0;
     private boolean isQueueProcessing = false;
-    
+
     // Animation Timers
     private Timer currentFadeOutTimer;
     private Timer currentLoadTimer;
@@ -1096,7 +1106,8 @@ public class App extends JFrame {
             interrupted = true;
         }
         if (!activeFadeInTimers.isEmpty()) {
-            // Copy list to avoid concurrent modification if needed, but stopping shouldn't trigger modification immediately
+            // Copy list to avoid concurrent modification if needed, but stopping shouldn't
+            // trigger modification immediately
             // unless listeners run. But listeners remove themselves.
             // Safest to iterate copy.
             List<Timer> timers = new ArrayList<>(activeFadeInTimers);
@@ -1112,13 +1123,15 @@ public class App extends JFrame {
     }
 
     private void queueTabSwitch(int index) {
-        if (tabSwitchQueue.size() >= 3) return;
+        if (tabSwitchQueue.size() >= 3)
+            return;
         tabSwitchQueue.offer(index);
         processTabQueue();
     }
 
     private void processTabQueue() {
-        if (isQueueProcessing) return;
+        if (isQueueProcessing)
+            return;
 
         long now = System.currentTimeMillis();
         long timeSinceLast = now - lastSwitchTime;
@@ -1127,8 +1140,8 @@ public class App extends JFrame {
             performNextQueuedSwitch();
         } else {
             isQueueProcessing = true;
-            Timer waitTimer = new Timer((int)(400 - timeSinceLast), e -> {
-                ((Timer)e.getSource()).stop();
+            Timer waitTimer = new Timer((int) (400 - timeSinceLast), e -> {
+                ((Timer) e.getSource()).stop();
                 performNextQueuedSwitch();
             });
             waitTimer.setRepeats(false);
@@ -1141,15 +1154,15 @@ public class App extends JFrame {
             isQueueProcessing = false;
             return;
         }
-        
+
         isQueueProcessing = true;
         Integer nextIndex = tabSwitchQueue.poll();
         if (nextIndex != null) {
             lastSwitchTime = System.currentTimeMillis();
             executeTabSwitch(nextIndex);
-            
+
             Timer nextTimer = new Timer(400, e -> {
-                ((Timer)e.getSource()).stop();
+                ((Timer) e.getSource()).stop();
                 performNextQueuedSwitch();
             });
             nextTimer.setRepeats(false);
@@ -1162,10 +1175,11 @@ public class App extends JFrame {
     private void executeTabSwitch(int index) {
         boolean interrupted = stopActiveTransitions(); // Interrupt any ongoing transition
 
-        if (activeTabIndex == index) return;
+        if (activeTabIndex == index)
+            return;
         activeTabIndex = index;
         refreshTabsUI();
-        
+
         // If interrupted, skip fade out to immediately load new tab
         if (interrupted) {
             performTabSwitch();
@@ -1180,7 +1194,7 @@ public class App extends JFrame {
             currentFadeOutTimer.addActionListener(e -> {
                 alpha[0] -= 0.22f; // Fast fade out (20% faster)
                 if (alpha[0] <= 0.0f) {
-                    ((Timer)e.getSource()).stop();
+                    ((Timer) e.getSource()).stop();
                     performTabSwitch();
                 } else {
                     for (AnimatedCard card : cardsToAnimate) {
@@ -1201,11 +1215,11 @@ public class App extends JFrame {
         cardMap.clear();
         contentPanel.revalidate();
         contentPanel.repaint();
-        
+
         // Load new items after a short delay
         currentLoadTimer = new Timer(28, e -> {
             refreshUI();
-            ((Timer)e.getSource()).stop();
+            ((Timer) e.getSource()).stop();
         });
         currentLoadTimer.setRepeats(false);
         currentLoadTimer.start();
@@ -1220,13 +1234,18 @@ public class App extends JFrame {
     private void refreshUI() {
         // Calculate grid columns and width
         int windowWidth = scrollPane.getViewport().getWidth();
-        if (windowWidth <= 0) windowWidth = getWidth() - 20;
+        if (windowWidth <= 0)
+            windowWidth = getWidth() - 20;
 
         int cols;
-        if (windowWidth > 1300) cols = 4;
-        else if (windowWidth > 900) cols = 3;
-        else if (windowWidth > 600) cols = 2;
-        else cols = 1;
+        if (windowWidth > 1300)
+            cols = 4;
+        else if (windowWidth > 900)
+            cols = 3;
+        else if (windowWidth > 600)
+            cols = 2;
+        else
+            cols = 1;
 
         int baseCardWidth = (windowWidth - (cols * 20)) / cols;
         // Base height 200 scaled
@@ -1235,17 +1254,19 @@ public class App extends JFrame {
         // Get items to show
         boolean searchAll = searchScopeCombo != null && "All Tabs".equals(searchScopeCombo.getSelectedItem());
         List<ClipboardTab> searchList = searchAll ? tabs : List.of(getCurrentTab());
-        
+
         List<ClipboardItem> itemsToShow = new ArrayList<>();
         for (ClipboardTab tab : searchList) {
-             for (ClipboardItem item : tab.items) {
-                 if (!searchQuery.isEmpty()) {
+            for (ClipboardItem item : tab.items) {
+                if (!searchQuery.isEmpty()) {
                     if (item.getType() == ClipboardItem.Type.TEXT) {
-                        if (item.getText() == null || !item.getText().toLowerCase().contains(searchQuery)) continue;
-                    } else continue;
+                        if (item.getText() == null || !item.getText().toLowerCase().contains(searchQuery))
+                            continue;
+                    } else
+                        continue;
                 }
                 itemsToShow.add(item);
-             }
+            }
         }
 
         // Identify items to remove (in cardMap but not in itemsToShow)
@@ -1275,7 +1296,7 @@ public class App extends JFrame {
                 });
                 t.start();
             }
-            cardMap.remove(item); 
+            cardMap.remove(item);
         }
 
         // Layout calculation
@@ -1299,7 +1320,8 @@ public class App extends JFrame {
                                 break;
                             }
                         }
-                        if (!canFit) break;
+                        if (!canFit)
+                            break;
                     }
                     if (canFit) {
                         gridX = x;
@@ -1329,13 +1351,13 @@ public class App extends JFrame {
                 card = createItemCard(item, windowWidth);
                 contentPanel.add(card);
                 cardMap.put(item, card);
-                
+
                 // Initial state
                 card.setTargetBounds(x, y, cardWidth, cardHeight);
                 // Start slightly lower for slide-up effect
                 card.setBounds(x, y + 50, cardWidth, cardHeight);
                 card.setAlpha(0.0f);
-                
+
                 // Fade in
                 AnimatedCard finalCard = card;
                 Timer t = new Timer(10, null);
@@ -1365,30 +1387,30 @@ public class App extends JFrame {
         // Update preferred size
         int totalHeight = 10 + currentMaxRow * (baseCardHeight + 20);
         contentPanel.setPreferredSize(new Dimension(windowWidth, totalHeight));
-        
+
         // Start layout animation loop
         if (layoutTimer == null || !layoutTimer.isRunning()) {
             layoutTimer = new Timer(16, e -> {
                 boolean anyChanged = false;
                 for (AnimatedCard c : cardMap.values()) {
-                    if (c.animateStep()) anyChanged = true;
+                    if (c.animateStep())
+                        anyChanged = true;
                 }
                 if (!anyChanged) {
-                    ((Timer)e.getSource()).stop();
+                    ((Timer) e.getSource()).stop();
                 }
                 contentPanel.repaint(); // Repaint for smooth animation
             });
             layoutTimer.start();
         } else {
             // Ensure it continues if it was about to stop
-            if (!layoutTimer.isRunning()) layoutTimer.start();
+            if (!layoutTimer.isRunning())
+                layoutTimer.start();
         }
-        
+
         contentPanel.revalidate();
         contentPanel.repaint();
     }
-
-
 
     /**
      * Persist the current clipboard tabs and items to disk so they can be
@@ -1434,7 +1456,7 @@ public class App extends JFrame {
                     } else {
                         activeTabIndex = 0;
                     }
-                    
+
                     // Trigger AI generation for missing captions
                     if (configManager.isAiCaptionEnabled()) {
                         System.out.println("Checking for missing captions...");
@@ -1447,7 +1469,7 @@ public class App extends JFrame {
                                         if (caption != null && !caption.isEmpty()) {
                                             item.setCaption(caption);
                                             SwingUtilities.invokeLater(() -> {
-                                                refreshUI(); 
+                                                refreshUI();
                                                 saveClipboardState();
                                             });
                                         }
@@ -1469,15 +1491,18 @@ public class App extends JFrame {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                if (img == null) return;
+                if (img == null)
+                    return;
 
                 int iw = img.getWidth(this);
                 int ih = img.getHeight(this);
-                if (iw <= 0 || ih <= 0) return;
+                if (iw <= 0 || ih <= 0)
+                    return;
 
                 int cw = getWidth();
                 int ch = getHeight();
-                if (cw <= 0 || ch <= 0) return;
+                if (cw <= 0 || ch <= 0)
+                    return;
 
                 double scale = Math.min((double) cw / iw, (double) ch / ih);
                 int tw = (int) (iw * scale);
@@ -1493,14 +1518,33 @@ public class App extends JFrame {
             }
         };
         preview.setOpaque(false);
-        
+
         // Forward mouse events
         MouseAdapter ma = new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
         };
         preview.addMouseListener(ma);
         return preview;
@@ -1508,32 +1552,36 @@ public class App extends JFrame {
 
     private AnimatedCard createItemCard(ClipboardItem item, int windowWidth) {
         int windowHeight = getHeight();
-        
+
         // Base dimensions relative to 1920x1080 reference
         double widthScale = (double) windowWidth / 1920.0;
         double heightScale = (double) windowHeight / 1080.0;
-        
-        int cols;
-        if (windowWidth > 1300) cols = 4;
-        else if (windowWidth > 900) cols = 3;
-        else if (windowWidth > 600) cols = 2;
-        else cols = 1;
 
-        int baseCardWidth = (windowWidth - (cols * 20)) / cols; 
+        int cols;
+        if (windowWidth > 1300)
+            cols = 4;
+        else if (windowWidth > 900)
+            cols = 3;
+        else if (windowWidth > 600)
+            cols = 2;
+        else
+            cols = 1;
+
+        int baseCardWidth = (windowWidth - (cols * 20)) / cols;
         // Increased base height by 25% (from 160 to 200) and scaled with window height
-        int baseCardHeight = (int) (200 * Math.max(0.8, heightScale)); 
-        
+        int baseCardHeight = (int) (200 * Math.max(0.8, heightScale));
+
         boolean dynamicResizing = configManager.isDynamicResizing();
         int itemCols = dynamicResizing ? Math.min(item.getCols(), cols) : 1;
         int itemRows = dynamicResizing ? item.getRows() : 1;
-        
+
         int cardWidth = baseCardWidth * itemCols + (itemCols - 1) * 20;
         int cardHeight = baseCardHeight * itemRows + (itemRows - 1) * 20;
 
         AnimatedCard card = new AnimatedCard(new BorderLayout(10, 5));
         card.setPreferredSize(new Dimension(cardWidth, cardHeight));
         card.setBorder(new EmptyBorder(8, 12, 8, 12));
-        
+
         if (item.getCaption() != null && !item.getCaption().isEmpty()) {
             card.setToolTipText(item.getCaption());
         }
@@ -1549,8 +1597,10 @@ public class App extends JFrame {
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         controlPanel.setOpaque(false);
 
-        JButton infoBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/tabs/info.svg", 16, 16), "cardIcon", "cardIconHover");
-        JButton deleteBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/close.svg", 16, 16), "cardIcon", "cardIconHover");
+        JButton infoBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/tabs/info.svg", 16, 16),
+                "cardIcon", "cardIconHover");
+        JButton deleteBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/close.svg", 16, 16),
+                "cardIcon", "cardIconHover");
 
         infoBtn.addActionListener(e -> showInfoPopup(item));
         deleteBtn.addActionListener(e -> {
@@ -1559,11 +1609,12 @@ public class App extends JFrame {
         });
 
         // Move Button
-        JButton moveBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/move.svg", 16, 16), "cardIcon", "cardIconHover");
+        JButton moveBtn = createSubtleButton(new FlatSVGIcon("com/virtualclipboard/icons/move.svg", 16, 16), "cardIcon",
+                "cardIconHover");
         moveBtn.setToolTipText("Move to another tab");
         moveBtn.addActionListener(e -> {
             JPopupMenu moveMenu = new JPopupMenu();
-            moveMenu.setBorder(new EmptyBorder(0,0,0,0));
+            moveMenu.setBorder(new EmptyBorder(0, 0, 0, 0));
             for (int i = 0; i < tabs.size(); i++) {
                 if (i == activeTabIndex)
                     continue;
@@ -1599,7 +1650,7 @@ public class App extends JFrame {
         // Content Area
         JPanel contentArea = new JPanel(new BorderLayout());
         contentArea.setOpaque(false);
-        
+
         ClipboardItem.Type displayType = item.getType();
 
         if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
@@ -1609,15 +1660,16 @@ public class App extends JFrame {
             boolean isSvgRendered = false;
             try {
                 byte[] svgBytes = item.getText().getBytes(StandardCharsets.UTF_8);
-                // Create a temporary file for the SVG content to avoid InputStream issues with FlatSVGIcon
+                // Create a temporary file for the SVG content to avoid InputStream issues with
+                // FlatSVGIcon
                 File tempFile = File.createTempFile("clipboard_preview_", ".svg");
                 tempFile.deleteOnExit();
                 try (FileOutputStream fos = new FileOutputStream(tempFile)) {
                     fos.write(svgBytes);
                 }
-                
+
                 FlatSVGIcon svgIcon = new FlatSVGIcon(tempFile);
-                
+
                 // Validate SVG by forcing a render (catches parser errors early)
                 BufferedImage bi = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
                 Graphics2D g2d = bi.createGraphics();
@@ -1636,19 +1688,38 @@ public class App extends JFrame {
                 float svgWidth = svgIcon.getIconWidth();
                 float svgHeight = svgIcon.getIconHeight();
                 float scale = Math.min(maxImgWidth / svgWidth, maxImgHeight / svgHeight);
-                
-                svgIcon = svgIcon.derive((int)(svgWidth * scale), (int)(svgHeight * scale));
+
+                svgIcon = svgIcon.derive((int) (svgWidth * scale), (int) (svgHeight * scale));
                 preview.setIcon(svgIcon);
-                
+
                 // Add mouse listener for consistency
                 preview.addMouseListener(new MouseAdapter() {
-                    @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                    @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                    @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                    @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-                    @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+                    }
+
+                    @Override
+                    public void mousePressed(MouseEvent e) {
+                        card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+                    }
+
+                    @Override
+                    public void mouseReleased(MouseEvent e) {
+                        card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+                    }
+
+                    @Override
+                    public void mouseEntered(MouseEvent e) {
+                        card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+                    }
+
+                    @Override
+                    public void mouseExited(MouseEvent e) {
+                        card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+                    }
                 });
-                
+
                 previewComponent = preview;
                 isSvgRendered = true;
             } catch (Throwable e) {
@@ -1656,7 +1727,7 @@ public class App extends JFrame {
                 previewComponent = createTextPreviewComponent(item, itemCols, itemRows, card);
                 isSvgRendered = false;
             }
-            
+
             if (!isSvgRendered) {
                 displayType = ClipboardItem.Type.TEXT;
             }
@@ -1673,21 +1744,29 @@ public class App extends JFrame {
         JLabel typeIndicator;
         if (configManager.isUseSvgTypeIcons()) {
             String iconName = "Text.svg";
-            if (displayType == ClipboardItem.Type.IMAGE) iconName = "Image.svg";
-            else if (displayType == ClipboardItem.Type.URL) iconName = "URL.svg";
-            else if (displayType == ClipboardItem.Type.SVG) iconName = "SVG.svg";
-            else if (displayType == ClipboardItem.Type.GIF) iconName = "GIF.svg";
-            
+            if (displayType == ClipboardItem.Type.IMAGE)
+                iconName = "Image.svg";
+            else if (displayType == ClipboardItem.Type.URL)
+                iconName = "URL.svg";
+            else if (displayType == ClipboardItem.Type.SVG)
+                iconName = "SVG.svg";
+            else if (displayType == ClipboardItem.Type.GIF)
+                iconName = "GIF.svg";
+
             FlatSVGIcon typeIcon = new FlatSVGIcon("com/virtualclipboard/icons/entries/" + iconName, 16, 16);
             typeIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("cardIcon")));
             typeIndicator = new JLabel(typeIcon);
         } else {
             String typeStr = "T";
-            if (displayType == ClipboardItem.Type.IMAGE) typeStr = "I";
-            else if (displayType == ClipboardItem.Type.URL) typeStr = "U";
-            else if (displayType == ClipboardItem.Type.SVG) typeStr = "S";
-            else if (displayType == ClipboardItem.Type.GIF) typeStr = "G";
-            
+            if (displayType == ClipboardItem.Type.IMAGE)
+                typeStr = "I";
+            else if (displayType == ClipboardItem.Type.URL)
+                typeStr = "U";
+            else if (displayType == ClipboardItem.Type.SVG)
+                typeStr = "S";
+            else if (displayType == ClipboardItem.Type.GIF)
+                typeStr = "G";
+
             typeIndicator = new JLabel(typeStr);
             typeIndicator.setFont(getAppFont(FONT_FAMILY, Font.BOLD, configManager.getFontSize() + 3));
             typeIndicator.setForeground(getThemeColor("cardIcon"));
@@ -1855,12 +1934,12 @@ public class App extends JFrame {
         JPanel iconsPanel = new JPanel(new GridLayout(0, 5, 15, 15));
         iconsPanel.setOpaque(false);
         iconsPanel.setBorder(new EmptyBorder(25, 25, 25, 25));
-        
+
         String[] iconNames = {
-            "home", "work", "star", "heart", "code", "chat", "search", "settings", 
-            "info", "edit", "image", "folder", "link", "check", "music", "video",
-            "document", "download", "upload", "cloud", "mail", "calendar", "user", 
-            "lock", "globe", "bookmark", "clipboard", "console", "chart", "game"
+                "home", "work", "star", "heart", "code", "chat", "search", "settings",
+                "info", "edit", "image", "folder", "link", "check", "music", "video",
+                "document", "download", "upload", "cloud", "mail", "calendar", "user",
+                "lock", "globe", "bookmark", "clipboard", "console", "chart", "game"
         };
         for (String name : iconNames) {
             String path = "com/virtualclipboard/icons/tabs/" + name + ".svg";
@@ -1874,7 +1953,7 @@ public class App extends JFrame {
             });
             iconsPanel.add(btn);
         }
-        
+
         JPanel iconsWrapper = new JPanel(new BorderLayout());
         iconsWrapper.setOpaque(false);
         JScrollPane iconsScroll = new JScrollPane(iconsPanel);
@@ -1888,8 +1967,9 @@ public class App extends JFrame {
         JPanel emojisPanel = new JPanel(new GridLayout(0, 5, 10, 10));
         emojisPanel.setOpaque(false);
         emojisPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
-        
-        String[] emojis = {"😀", "😂", "😍", "🚀", "💡", "🔥", "👍", "🎉", "📅", "✅", "⚡", "💻", "🎮", "🎵", "📷", "🍔", "🍺", "✈️", "🏠", "❤️"};
+
+        String[] emojis = { "😀", "😂", "😍", "🚀", "💡", "🔥", "👍", "🎉", "📅", "✅", "⚡", "💻", "🎮", "🎵", "📷",
+                "🍔", "🍺", "✈️", "🏠", "❤️" };
         for (String emoji : emojis) {
             JButton btn = new JButton(emoji);
             btn.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 28));
@@ -1899,13 +1979,14 @@ public class App extends JFrame {
             btn.setFocusPainted(false);
             btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             btn.setPreferredSize(new Dimension(50, 50));
-            
+
             btn.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseEntered(MouseEvent e) {
                     btn.setBorder(new LineBorder(getThemeColor("textPrimary"), 1, true));
                     btn.setForeground(getThemeColor("textPrimary"));
                 }
+
                 @Override
                 public void mouseExited(MouseEvent e) {
                     btn.setBorder(new LineBorder(getThemeColor("textSecondary"), 1, true));
@@ -1922,7 +2003,7 @@ public class App extends JFrame {
             });
             emojisPanel.add(btn);
         }
-        
+
         JPanel emojisWrapper = new JPanel(new BorderLayout());
         emojisWrapper.setOpaque(false);
         JScrollPane emojisScroll = new JScrollPane(emojisPanel);
@@ -1936,7 +2017,7 @@ public class App extends JFrame {
         JPanel customPanel = new JPanel(new BorderLayout(15, 15));
         customPanel.setOpaque(false);
         customPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
-        
+
         JTextField customField = new JTextField();
         customField.putClientProperty("JTextField.placeholderText", "Enter custom emoji or text...");
         customField.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
@@ -1944,7 +2025,7 @@ public class App extends JFrame {
         customField.setBackground(getThemeColor("inputBackground"));
         customField.setForeground(getThemeColor("inputText"));
         customField.setCaretColor(getThemeColor("inputText"));
-        
+
         JButton setBtn = new JButton("Apply Custom");
         setBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
         setBtn.setBackground(getThemeColor("buttonBackground"));
@@ -1981,15 +2062,15 @@ public class App extends JFrame {
 
         customPanel.add(customField, BorderLayout.NORTH);
         customPanel.add(btnPanel, BorderLayout.SOUTH);
-        
+
         // Combine Custom Panel with a label explanation or just add it to dialog
         JPanel bottomContainer = new JPanel(new BorderLayout());
         bottomContainer.setOpaque(false);
         bottomContainer.add(customPanel, BorderLayout.NORTH);
-        
+
         dialog.add(tabs, BorderLayout.CENTER);
         dialog.add(bottomContainer, BorderLayout.SOUTH);
-        
+
         dialog.setVisible(true);
     }
 
@@ -1997,16 +2078,16 @@ public class App extends JFrame {
         FlatSVGIcon icon = new FlatSVGIcon(iconPath, size, size);
         Color defaultColor = getThemeColor("textSecondary");
         Color hoverColor = getThemeColor("textPrimary");
-        
+
         icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> defaultColor));
-        
+
         JButton btn = new JButton(icon);
         btn.setPreferredSize(new Dimension(60, 60));
         btn.setContentAreaFilled(false);
         btn.setBorder(new LineBorder(defaultColor, 1, true));
         btn.setFocusPainted(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        
+
         btn.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
@@ -2014,6 +2095,7 @@ public class App extends JFrame {
                 btn.setBorder(new LineBorder(hoverColor, 1, true));
                 btn.repaint();
             }
+
             @Override
             public void mouseExited(MouseEvent e) {
                 icon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> defaultColor));
@@ -2050,12 +2132,12 @@ public class App extends JFrame {
 
         if (item.getType() == ClipboardItem.Type.TEXT || item.getType() == ClipboardItem.Type.URL) {
             details.add(new String[] { "Characters", String.valueOf(item.getCharacterCount()) });
-            
+
             if (item.getType() != ClipboardItem.Type.URL) {
                 details.add(new String[] { "Words", String.valueOf(item.getWordCount()) });
                 details.add(new String[] { "Lines", String.valueOf(item.getLineCount()) });
             }
-            
+
             if (item.getType() == ClipboardItem.Type.URL) {
                 details.add(new String[] { "Domain", item.getUrlDomain() });
                 details.add(new String[] { "Protocol", item.getUrlProtocol() });
@@ -2072,30 +2154,31 @@ public class App extends JFrame {
                 }
                 FlatSVGIcon svgIcon = new FlatSVGIcon(tempFile);
                 if (svgIcon.getIconWidth() > 0) {
-                     details.add(new String[] { "Dimensions", svgIcon.getIconWidth() + " x " + svgIcon.getIconHeight() });
-                     isRenderable = true;
+                    details.add(
+                            new String[] { "Dimensions", svgIcon.getIconWidth() + " x " + svgIcon.getIconHeight() });
+                    isRenderable = true;
                 }
             } catch (Throwable e) {
                 isRenderable = false;
             }
-            
+
             if (!isRenderable) {
                 details.add(new String[] { "Status", "Raw Code (Render Failed)" });
             }
             // Always show code stats for SVG as it is code-based
             details.add(new String[] { "Characters", String.valueOf(item.getCharacterCount()) });
             details.add(new String[] { "Lines", String.valueOf(item.getLineCount()) });
-            
+
         } else {
             details.add(new String[] { "Dimensions", item.getWidth() + " x " + item.getHeight() });
             details.add(new String[] { "Aspect Ratio", item.getAspectRatio() });
-            
+
             if (item.getType() == ClipboardItem.Type.GIF && item.getFrameCount() > 1) {
                 details.add(new String[] { "Frames", String.valueOf(item.getFrameCount()) });
                 details.add(new String[] { "Duration", item.getFormattedDuration() });
             }
         }
-        
+
         if (item.getCaption() != null && !item.getCaption().isEmpty()) {
             // Caption handled separately below to allow wrapping
         }
@@ -2126,7 +2209,7 @@ public class App extends JFrame {
             JLabel captionTitle = new JLabel("AI Caption");
             captionTitle.setForeground(getThemeColor("textSecondary"));
             captionTitle.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
-            
+
             JTextArea captionText = new JTextArea(item.getCaption());
             captionText.setLineWrap(true);
             captionText.setWrapStyleWord(true);
@@ -2135,12 +2218,12 @@ public class App extends JFrame {
             captionText.setForeground(getThemeColor("generalText"));
             captionText.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
             // Important: set columns to limit preferred width calculation
-            captionText.setColumns(40); 
+            captionText.setColumns(40);
             captionText.setBorder(BorderFactory.createEmptyBorder());
 
             captionPanel.add(captionTitle, BorderLayout.NORTH);
             captionPanel.add(captionText, BorderLayout.CENTER);
-            
+
             topContainer.add(captionPanel);
         }
 
@@ -2159,7 +2242,7 @@ public class App extends JFrame {
                     fos.write(svgBytes);
                 }
                 svgIcon = new FlatSVGIcon(tempFile);
-                
+
                 // Validate
                 BufferedImage bi = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
                 Graphics2D g2d = bi.createGraphics();
@@ -2179,7 +2262,7 @@ public class App extends JFrame {
             textArea.setLineWrap(true);
             textArea.setWrapStyleWord(true);
             textArea.setBackground(getThemeColor("inputBackground"));
-            
+
             if (item.getType() == ClipboardItem.Type.URL) {
                 if (configManager.isHighContrast()) {
                     textArea.setForeground(getThemeColor("inputText"));
@@ -2193,7 +2276,7 @@ public class App extends JFrame {
                 textArea.setForeground(getThemeColor("inputText"));
                 textArea.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 16));
             }
-            
+
             textArea.setCaretColor(getThemeColor("inputText"));
             textArea.setBorder(new EmptyBorder(15, 15, 15, 15));
 
@@ -2206,7 +2289,7 @@ public class App extends JFrame {
 
             JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
             btnPanel.setOpaque(false);
-            
+
             // Add Generate Caption Button if no caption exists or to regenerate
             if (configManager.isAiCaptionEnabled()) {
                 JButton captionBtn = new JButton("Generate Caption");
@@ -2219,29 +2302,29 @@ public class App extends JFrame {
                     captionBtn.setEnabled(false);
                     captionBtn.setText("Generating...");
                     ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
-                         SwingUtilities.invokeLater(() -> {
-                             if (caption != null && !caption.isEmpty()) {
-                                 item.setCaption(caption);
-                                 saveClipboardState();
-                                 refreshUI();
-                                 dialog.dispose();
-                                 showInfoPopup(item); // Reopen to show new caption
-                             } else {
-                                 captionBtn.setText("Failed / Offline");
-                                 Timer t = new Timer(2000, evt -> {
-                                     captionBtn.setText("Generate Caption");
-                                     captionBtn.setEnabled(true);
-                                 });
-                                 t.setRepeats(false);
-                                 t.start();
-                             }
-                         });
+                        SwingUtilities.invokeLater(() -> {
+                            if (caption != null && !caption.isEmpty()) {
+                                item.setCaption(caption);
+                                saveClipboardState();
+                                refreshUI();
+                                dialog.dispose();
+                                showInfoPopup(item); // Reopen to show new caption
+                            } else {
+                                captionBtn.setText("Failed / Offline");
+                                Timer t = new Timer(2000, evt -> {
+                                    captionBtn.setText("Generate Caption");
+                                    captionBtn.setEnabled(true);
+                                });
+                                t.setRepeats(false);
+                                t.start();
+                            }
+                        });
                     });
                 });
                 btnPanel.add(captionBtn);
                 btnPanel.add(Box.createHorizontalStrut(10));
             }
-            
+
             JButton searchBtn = new JButton("Search Web");
             searchBtn.setBackground(getThemeColor("buttonBackground"));
             searchBtn.setForeground(getThemeColor("buttonText"));
@@ -2249,27 +2332,38 @@ public class App extends JFrame {
             searchBtn.setBorder(new EmptyBorder(8, 15, 8, 15));
             searchBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             searchBtn.addActionListener(e -> {
-                 String query = item.getText();
-                 String engine = configManager.getTextSearchEngine();
-                 String url = "";
-                 try {
-                     String encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
-                     switch (engine) {
-                         case "Bing": url = "https://www.bing.com/search?q=" + encodedQuery; break;
-                         case "DuckDuckGo": url = "https://duckduckgo.com/?q=" + encodedQuery; break;
-                         case "Yahoo": url = "https://search.yahoo.com/search?p=" + encodedQuery; break;
-                         case "Yandex": url = "https://yandex.com/search/?text=" + encodedQuery; break;
-                         case "Google": default: url = "https://www.google.com/search?q=" + encodedQuery; break;
-                     }
-                     openBrowser(url);
-                 } catch (Exception ex) {
-                     ex.printStackTrace();
-                 }
+                String query = item.getText();
+                String engine = configManager.getTextSearchEngine();
+                String url = "";
+                try {
+                    String encodedQuery = java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
+                    switch (engine) {
+                        case "Bing":
+                            url = "https://www.bing.com/search?q=" + encodedQuery;
+                            break;
+                        case "DuckDuckGo":
+                            url = "https://duckduckgo.com/?q=" + encodedQuery;
+                            break;
+                        case "Yahoo":
+                            url = "https://search.yahoo.com/search?p=" + encodedQuery;
+                            break;
+                        case "Yandex":
+                            url = "https://yandex.com/search/?text=" + encodedQuery;
+                            break;
+                        case "Google":
+                        default:
+                            url = "https://www.google.com/search?q=" + encodedQuery;
+                            break;
+                    }
+                    openBrowser(url);
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
             });
-            
+
             btnPanel.add(searchBtn);
             textPanel.add(btnPanel, BorderLayout.SOUTH);
-            
+
             mainPanel.add(textPanel, BorderLayout.CENTER);
         } else {
             JPanel imageContainer = new JPanel(new BorderLayout(10, 10));
@@ -2313,10 +2407,11 @@ public class App extends JFrame {
             int maxW = (int) (screenSize.width * 0.5);
             int maxH = (int) (screenSize.height * 0.5);
 
-            // Calculate preferred size: image size + padding for scrollbars, capped at 50% screen
+            // Calculate preferred size: image size + padding for scrollbars, capped at 50%
+            // screen
             int prefW = Math.min(maxW, imgW + 30);
             int prefH = Math.min(maxH, imgH + 30);
-            
+
             // Ensure minimum size for visibility
             prefW = Math.max(prefW, 200);
             prefH = Math.max(prefH, 150);
@@ -2491,23 +2586,23 @@ public class App extends JFrame {
         helpText.setForeground(getThemeColor("generalText"));
         helpText.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
         helpText.setText(
-            "Welcome to Virtual Clipboard!\n\n" +
-            "Shortcuts:\n" +
-            "- Ctrl+Shift+V: Open Clipboard (Global)\n" +
-            "- Esc: Close Clipboard\n\n" +
-            "Features:\n" +
-            "- Tabs: Organize your clips into tabs. Use drag & drop to reorder.\n" +
-            "- Search: Filter items by text or type.\n" +
-            "- AI Captions: Enable Ollama integration in Settings to auto-generate captions for text entries.\n" +
-            "- Smart Paste: Double-click an item to paste it.\n" +
-            "- Drag & Drop: Drag files or text into the window to add them.\n\n" +
-            "AI Integration (Ollama):\n" +
-            "- Requires Ollama to be installed and running locally.\n" +
-            "- Default model: llama3 (configurable in Settings).\n" +
-            "- Captions appear as tooltips and in 'More Info'.\n" +
-            "- You can manually regenerate captions in 'More Info' or bulk generate in Settings."
-        );
-        
+                "Welcome to Virtual Clipboard!\n\n" +
+                        "Shortcuts:\n" +
+                        "- Ctrl+Shift+V: Open Clipboard (Global)\n" +
+                        "- Esc: Close Clipboard\n\n" +
+                        "Features:\n" +
+                        "- Tabs: Organize your clips into tabs. Use drag & drop to reorder.\n" +
+                        "- Search: Filter items by text or type.\n" +
+                        "- AI Captions: Enable Ollama integration in Settings to auto-generate captions for text entries.\n"
+                        +
+                        "- Smart Paste: Double-click an item to paste it.\n" +
+                        "- Drag & Drop: Drag files or text into the window to add them.\n\n" +
+                        "AI Integration (Ollama):\n" +
+                        "- Requires Ollama to be installed and running locally.\n" +
+                        "- Default model: llama3 (configurable in Settings).\n" +
+                        "- Captions appear as tooltips and in 'More Info'.\n" +
+                        "- You can manually regenerate captions in 'More Info' or bulk generate in Settings.");
+
         contentPanel.add(helpText);
         contentPanel.add(Box.createVerticalStrut(30));
 
@@ -2559,12 +2654,12 @@ public class App extends JFrame {
 
         // Group 1: General Appearance
         contentPanel.add(createSectionHeader("Appearance", accent));
-        
+
         contentPanel.add(createSettingLabel("Color Palette", textSecondary));
-        String[] themes = { 
-            "Dark", "Deep Ocean", "Forest", "Sunset", 
-            "Twilight", "Neon Night", 
-            "Paper White", "Soft Mint", "Lavender Mist" 
+        String[] themes = {
+                "Dark", "Deep Ocean", "Forest", "Sunset",
+                "Twilight", "Neon Night",
+                "Paper White", "Soft Mint", "Lavender Mist"
         };
         JComboBox<String> themeCombo = createStyledComboBox(themes, configManager.getTheme());
         contentPanel.add(themeCombo);
@@ -2575,35 +2670,40 @@ public class App extends JFrame {
         JComboBox<Integer> fontCombo = createStyledComboBox(fontSizes, configManager.getFontSize());
         contentPanel.add(fontCombo);
         contentPanel.add(Box.createVerticalStrut(15));
-        
+
         // Use SVG Icons (Moved to Appearance)
-        JCheckBox useSvgIconsCheck = createSettingCheckbox("Use SVG Type Icons", configManager.isUseSvgTypeIcons(), textPrimary);
+        JCheckBox useSvgIconsCheck = createSettingCheckbox("Use SVG Type Icons", configManager.isUseSvgTypeIcons(),
+                textPrimary);
         contentPanel.add(useSvgIconsCheck);
         contentPanel.add(Box.createVerticalStrut(10));
-        
-        JCheckBox dynamicResizingCheck = createSettingCheckbox("Dynamic Card Resizing", configManager.isDynamicResizing(), textPrimary);
+
+        JCheckBox dynamicResizingCheck = createSettingCheckbox("Dynamic Card Resizing",
+                configManager.isDynamicResizing(), textPrimary);
         contentPanel.add(dynamicResizingCheck);
         contentPanel.add(Box.createVerticalStrut(10));
 
-        JCheckBox highContrastCheck = createSettingCheckbox("High Contrast Colors", configManager.isHighContrast(), textPrimary);
+        JCheckBox highContrastCheck = createSettingCheckbox("High Contrast Colors", configManager.isHighContrast(),
+                textPrimary);
         contentPanel.add(highContrastCheck);
         contentPanel.add(Box.createVerticalStrut(30));
 
         // Group 2: Search & Behavior
         contentPanel.add(createSectionHeader("Search & Tools", accent));
-        
+
         contentPanel.add(createSettingLabel("Preferred Browser", textSecondary));
         List<String> detectedBrowsers = BrowserDetector.detectInstalledBrowsers();
         List<String> browserList = new ArrayList<>();
         browserList.add("System Default");
         browserList.addAll(detectedBrowsers);
-        JComboBox<String> browserCombo = createStyledComboBox(browserList.toArray(new String[0]), configManager.getBrowser());
+        JComboBox<String> browserCombo = createStyledComboBox(browserList.toArray(new String[0]),
+                configManager.getBrowser());
         contentPanel.add(browserCombo);
         contentPanel.add(Box.createVerticalStrut(15));
 
         contentPanel.add(createSettingLabel("Text Search Engine", textSecondary));
         String[] textSearchEngines = { "Google", "Bing", "DuckDuckGo", "Yahoo", "Yandex" };
-        JComboBox<String> textSearchEngineCombo = createStyledComboBox(textSearchEngines, configManager.getTextSearchEngine());
+        JComboBox<String> textSearchEngineCombo = createStyledComboBox(textSearchEngines,
+                configManager.getTextSearchEngine());
         contentPanel.add(textSearchEngineCombo);
         contentPanel.add(Box.createVerticalStrut(15));
 
@@ -2612,57 +2712,63 @@ public class App extends JFrame {
         JComboBox<String> searchEngineCombo = createStyledComboBox(searchEngines, configManager.getSearchEngine());
         contentPanel.add(searchEngineCombo);
         contentPanel.add(Box.createVerticalStrut(15));
-        
+
         // Use Incognito Mode (Moved to Search & Tools)
-        JCheckBox incognitoCheck = createSettingCheckbox("Use Incognito Mode", configManager.isIncognito(), textPrimary);
+        JCheckBox incognitoCheck = createSettingCheckbox("Use Incognito Mode", configManager.isIncognito(),
+                textPrimary);
         contentPanel.add(incognitoCheck);
         contentPanel.add(Box.createVerticalStrut(30));
 
         // Group 3: History
         contentPanel.add(createSectionHeader("History", accent));
-        
+
         contentPanel.add(createSettingLabel("Max History Items", textSecondary));
         Integer[] historyLimits = { 25, 50, 100, 200, 500 };
         JComboBox<Integer> historyCombo = createStyledComboBox(historyLimits, configManager.getMaxHistory());
         contentPanel.add(historyCombo);
         contentPanel.add(Box.createVerticalStrut(30));
-        
+
         // Group 4: Other
         contentPanel.add(createSectionHeader("Other", accent));
 
         // Switches
-        JCheckBox autoStartCheck = createSettingCheckbox("Start with Windows", configManager.isAutoStart(), textPrimary);
-        JCheckBox autoSortCheck = createSettingCheckbox("Auto-sort by Date (Newest First)", configManager.isAutoSortByDate(), textPrimary);
-        JCheckBox use24HourTimeCheck = createSettingCheckbox("Use 24-Hour Time", configManager.isUse24HourTime(), textPrimary);
+        JCheckBox autoStartCheck = createSettingCheckbox("Start with Windows", configManager.isAutoStart(),
+                textPrimary);
+        JCheckBox autoSortCheck = createSettingCheckbox("Auto-sort by Date (Newest First)",
+                configManager.isAutoSortByDate(), textPrimary);
+        JCheckBox use24HourTimeCheck = createSettingCheckbox("Use 24-Hour Time", configManager.isUse24HourTime(),
+                textPrimary);
 
         contentPanel.add(autoStartCheck);
         contentPanel.add(Box.createVerticalStrut(10));
         contentPanel.add(autoSortCheck);
         contentPanel.add(Box.createVerticalStrut(10));
         contentPanel.add(use24HourTimeCheck);
-        
+
         // AI Settings
         contentPanel.add(Box.createVerticalStrut(10));
-        JCheckBox aiCaptionCheck = createSettingCheckbox("Enable AI Captions (Ollama)", configManager.isAiCaptionEnabled(), textPrimary);
+        JCheckBox aiCaptionCheck = createSettingCheckbox("Enable AI Captions (Ollama)",
+                configManager.isAiCaptionEnabled(), textPrimary);
         contentPanel.add(aiCaptionCheck);
         contentPanel.add(Box.createVerticalStrut(5));
-        
+
         contentPanel.add(createSettingLabel("Ollama Model", textSecondary));
         // Initialize with config model, then update asynchronously
-        JComboBox<String> ollamaModelCombo = new JComboBox<>(new String[]{ configManager.getOllamaModel() });
+        JComboBox<String> ollamaModelCombo = new JComboBox<>(new String[] { configManager.getOllamaModel() });
         ollamaModelCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         ollamaModelCombo.setAlignmentX(Component.LEFT_ALIGNMENT);
         ollamaModelCombo.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
         ollamaModelCombo.setBackground(getThemeColor("inputBackground"));
         ollamaModelCombo.setForeground(getThemeColor("inputText"));
         ollamaModelCombo.setBorder(new EmptyBorder(5, 10, 5, 10));
-        
+
         // Custom Renderer to ensure theme colors are applied to the dropdown list
         ollamaModelCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected,
+                    boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                
+
                 if (isSelected) {
                     if (configManager.isHighContrast()) {
                         setBackground(getThemeColor("bgMain"));
@@ -2687,18 +2793,19 @@ public class App extends JFrame {
                 if (models.isEmpty()) {
                     ollamaModelCombo.addItem(current);
                 } else {
-                    for (String m : models) ollamaModelCombo.addItem(m);
+                    for (String m : models)
+                        ollamaModelCombo.addItem(m);
                     if (models.contains(current)) {
                         ollamaModelCombo.setSelectedItem(current);
                     } else {
                         // If current not in list, try to find a match or default to first
                         boolean found = false;
                         for (String m : models) {
-                             if (m.contains(current)) {
-                                 ollamaModelCombo.setSelectedItem(m);
-                                 found = true;
-                                 break;
-                             }
+                            if (m.contains(current)) {
+                                ollamaModelCombo.setSelectedItem(m);
+                                found = true;
+                                break;
+                            }
                         }
                         if (!found && !models.isEmpty()) {
                             ollamaModelCombo.setSelectedIndex(0);
@@ -2736,32 +2843,33 @@ public class App extends JFrame {
         generateAllBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         generateAllBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
         generateAllBtn.setEnabled(false); // Disabled until status checked
-        
+
         generateAllBtn.addActionListener(e -> {
             generateAllBtn.setEnabled(false);
-            
+
             // Count items first
             int totalItems = 0;
             List<ClipboardItem> itemsToProcess = new ArrayList<>();
-            
+
             for (ClipboardTab tab : tabs) {
                 for (ClipboardItem item : tab.items) {
-                    if (item.getType() == ClipboardItem.Type.TEXT && (item.getCaption() == null || item.getCaption().isEmpty())) {
+                    if (item.getType() == ClipboardItem.Type.TEXT
+                            && (item.getCaption() == null || item.getCaption().isEmpty())) {
                         totalItems++;
                         itemsToProcess.add(item);
                     }
                 }
             }
-            
+
             if (totalItems == 0) {
-                 generateAllBtn.setText("No items needed captions.");
-                 Timer t = new Timer(2000, evt -> {
-                     generateAllBtn.setText("Generate Captions for All Entries");
-                     generateAllBtn.setEnabled(true);
-                 });
-                 t.setRepeats(false);
-                 t.start();
-                 return;
+                generateAllBtn.setText("No items needed captions.");
+                Timer t = new Timer(2000, evt -> {
+                    generateAllBtn.setText("Generate Captions for All Entries");
+                    generateAllBtn.setEnabled(true);
+                });
+                t.setRepeats(false);
+                t.start();
+                return;
             }
 
             generateAllBtn.setText("Generating... (0/" + totalItems + ")");
@@ -2776,17 +2884,17 @@ public class App extends JFrame {
                         if (caption != null && !caption.isEmpty()) {
                             item.setCaption(caption);
                             refreshUI();
-                            saveClipboardState(); 
+                            saveClipboardState();
                         }
-                        
+
                         if (current == finalTotal) {
-                             generateAllBtn.setText("Completed " + finalTotal + " items.");
-                             Timer t = new Timer(3000, evt -> {
-                                 generateAllBtn.setText("Generate Captions for All Entries");
-                                 generateAllBtn.setEnabled(true);
-                             });
-                             t.setRepeats(false);
-                             t.start();
+                            generateAllBtn.setText("Completed " + finalTotal + " items.");
+                            Timer t = new Timer(3000, evt -> {
+                                generateAllBtn.setText("Generate Captions for All Entries");
+                                generateAllBtn.setEnabled(true);
+                            });
+                            t.setRepeats(false);
+                            t.start();
                         }
                     });
                 });
@@ -2794,29 +2902,31 @@ public class App extends JFrame {
         });
 
         contentPanel.add(generateAllBtn);
-        
+
         // Check Status
         ollamaService.checkConnection().thenAccept(isRunning -> {
             SwingUtilities.invokeLater(() -> {
                 if (isRunning) {
                     statusLabel.setText("Status: Connected (Ollama Running)");
                     statusLabel.setForeground(new Color(0, 150, 0)); // Green
-                    if (configManager.isHighContrast()) statusLabel.setForeground(getThemeColor("accent"));
+                    if (configManager.isHighContrast())
+                        statusLabel.setForeground(getThemeColor("accent"));
                     generateAllBtn.setEnabled(aiCaptionCheck.isSelected());
                 } else {
                     statusLabel.setText("Status: Disconnected (Ollama Not Detected)");
                     statusLabel.setForeground(Color.RED);
-                    if (configManager.isHighContrast()) statusLabel.setForeground(Color.RED);
+                    if (configManager.isHighContrast())
+                        statusLabel.setForeground(Color.RED);
                     generateAllBtn.setEnabled(false);
                 }
             });
         });
-        
+
         aiCaptionCheck.addActionListener(e -> {
             ollamaModelCombo.setEnabled(aiCaptionCheck.isSelected());
             generateAllBtn.setEnabled(aiCaptionCheck.isSelected() && statusLabel.getText().contains("Connected"));
         });
-        
+
         contentPanel.add(Box.createVerticalStrut(40));
 
         // Action Buttons
@@ -2831,7 +2941,7 @@ public class App extends JFrame {
         saveBtn.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
         saveBtn.setBorder(new EmptyBorder(12, 25, 12, 25));
         saveBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        
+
         saveBtn.addActionListener(e -> {
             configManager.setBrowser((String) browserCombo.getSelectedItem());
             configManager.setTextSearchEngine((String) textSearchEngineCombo.getSelectedItem());
@@ -2848,11 +2958,11 @@ public class App extends JFrame {
             configManager.setHighContrast(highContrastCheck.isSelected());
             configManager.setAiCaptionEnabled(aiCaptionCheck.isSelected());
             configManager.setOllamaModel((String) ollamaModelCombo.getSelectedItem());
-            
+
             if (configManager.isAutoSortByDate()) {
-                 for (ClipboardTab t : tabs) {
-                     t.items.sort((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
-                 }
+                for (ClipboardTab t : tabs) {
+                    t.items.sort((a, b) -> b.getTimestamp().compareTo(a.getTimestamp()));
+                }
             }
 
             configManager.save();
@@ -2866,11 +2976,12 @@ public class App extends JFrame {
         if (configManager.isHighContrast()) {
             Color bg = getThemeColor("inputBackground");
             Color btnText = getThemeColor("buttonText");
-            
+
             // Calculate brightness
             double bgBrightness = (bg.getRed() * 0.299) + (bg.getGreen() * 0.587) + (bg.getBlue() * 0.114);
-            double textBrightness = (btnText.getRed() * 0.299) + (btnText.getGreen() * 0.587) + (btnText.getBlue() * 0.114);
-            
+            double textBrightness = (btnText.getRed() * 0.299) + (btnText.getGreen() * 0.587)
+                    + (btnText.getBlue() * 0.114);
+
             // Use buttonText if it has enough contrast with background
             if (Math.abs(bgBrightness - textBrightness) > 100) {
                 cancelBtn.setForeground(btnText);
@@ -2923,13 +3034,14 @@ public class App extends JFrame {
         combo.setBackground(getThemeColor("inputBackground"));
         combo.setForeground(getThemeColor("inputText"));
         combo.setBorder(new EmptyBorder(5, 10, 5, 10));
-        
+
         // Custom Renderer to ensure theme colors are applied to the dropdown list
         combo.setRenderer(new DefaultListCellRenderer() {
             @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected,
+                    boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                
+
                 if (isSelected) {
                     if (configManager.isHighContrast()) {
                         setBackground(getThemeColor("bgMain"));
@@ -2946,7 +3058,7 @@ public class App extends JFrame {
                 return this;
             }
         });
-        
+
         return combo;
     }
 
@@ -2972,131 +3084,227 @@ public class App extends JFrame {
 
     private Color getThemeColor(String key) {
         if (configManager.isHighContrast()) {
-            if ("inputBackground".equals(key)) return getThemeColor("accent");
+            if ("inputBackground".equals(key))
+                return getThemeColor("accent");
             if ("inputText".equals(key)) {
                 Color accent = getThemeColor("accent");
                 // Calculate brightness to ensure text is visible on accent background
                 // Formula: (R*299 + G*587 + B*114) / 1000
-                double brightness = (accent.getRed() * 0.299) + (accent.getGreen() * 0.587) + (accent.getBlue() * 0.114);
+                double brightness = (accent.getRed() * 0.299) + (accent.getGreen() * 0.587)
+                        + (accent.getBlue() * 0.114);
                 return brightness < 128 ? Color.WHITE : Color.BLACK;
             }
         }
         String theme = configManager.getTheme();
         switch (theme) {
             case "Deep Ocean":
-                if ("bgMain".equals(key)) return new Color(10, 25, 40);
-                if ("accent".equals(key)) return new Color(60, 160, 255);
-                if ("textPrimary".equals(key)) return Color.WHITE;
-                if ("textSecondary".equals(key)) return new Color(150, 180, 210);
-                if ("cardText".equals(key)) return Color.WHITE;
-                if ("inputBackground".equals(key)) return new Color(30, 65, 95);
-                if ("inputText".equals(key)) return Color.WHITE;
-                if ("buttonBackground".equals(key)) return new Color(60, 160, 255);
-                if ("buttonText".equals(key)) return Color.WHITE;
-                if ("generalText".equals(key)) return Color.WHITE;
+                if ("bgMain".equals(key))
+                    return new Color(10, 25, 40);
+                if ("accent".equals(key))
+                    return new Color(60, 160, 255);
+                if ("textPrimary".equals(key))
+                    return Color.WHITE;
+                if ("textSecondary".equals(key))
+                    return new Color(150, 180, 210);
+                if ("cardText".equals(key))
+                    return Color.WHITE;
+                if ("inputBackground".equals(key))
+                    return new Color(30, 65, 95);
+                if ("inputText".equals(key))
+                    return Color.WHITE;
+                if ("buttonBackground".equals(key))
+                    return new Color(60, 160, 255);
+                if ("buttonText".equals(key))
+                    return Color.WHITE;
+                if ("generalText".equals(key))
+                    return Color.WHITE;
                 break;
             case "Forest":
-                if ("bgMain".equals(key)) return new Color(15, 30, 20);
-                if ("accent".equals(key)) return new Color(80, 200, 120);
-                if ("textPrimary".equals(key)) return new Color(230, 245, 230);
-                if ("textSecondary".equals(key)) return new Color(140, 170, 145);
-                if ("cardText".equals(key)) return Color.WHITE;
-                if ("inputBackground".equals(key)) return new Color(35, 70, 50);
-                if ("inputText".equals(key)) return new Color(230, 245, 230);
-                if ("buttonBackground".equals(key)) return new Color(80, 200, 120);
-                if ("buttonText".equals(key)) return Color.WHITE;
-                if ("generalText".equals(key)) return new Color(230, 245, 230);
+                if ("bgMain".equals(key))
+                    return new Color(15, 30, 20);
+                if ("accent".equals(key))
+                    return new Color(80, 200, 120);
+                if ("textPrimary".equals(key))
+                    return new Color(230, 245, 230);
+                if ("textSecondary".equals(key))
+                    return new Color(140, 170, 145);
+                if ("cardText".equals(key))
+                    return Color.WHITE;
+                if ("inputBackground".equals(key))
+                    return new Color(35, 70, 50);
+                if ("inputText".equals(key))
+                    return new Color(230, 245, 230);
+                if ("buttonBackground".equals(key))
+                    return new Color(80, 200, 120);
+                if ("buttonText".equals(key))
+                    return Color.WHITE;
+                if ("generalText".equals(key))
+                    return new Color(230, 245, 230);
                 break;
             case "Sunset":
-                if ("bgMain".equals(key)) return new Color(40, 20, 30);
-                if ("accent".equals(key)) return new Color(255, 100, 100);
-                if ("textPrimary".equals(key)) return new Color(255, 240, 240);
-                if ("textSecondary".equals(key)) return new Color(210, 160, 170);
-                if ("cardText".equals(key)) return Color.WHITE;
-                if ("inputBackground".equals(key)) return new Color(95, 50, 65);
-                if ("inputText".equals(key)) return new Color(255, 240, 240);
-                if ("buttonBackground".equals(key)) return new Color(255, 100, 100);
-                if ("buttonText".equals(key)) return Color.WHITE;
-                if ("generalText".equals(key)) return new Color(255, 240, 240);
+                if ("bgMain".equals(key))
+                    return new Color(40, 20, 30);
+                if ("accent".equals(key))
+                    return new Color(255, 100, 100);
+                if ("textPrimary".equals(key))
+                    return new Color(255, 240, 240);
+                if ("textSecondary".equals(key))
+                    return new Color(210, 160, 170);
+                if ("cardText".equals(key))
+                    return Color.WHITE;
+                if ("inputBackground".equals(key))
+                    return new Color(95, 50, 65);
+                if ("inputText".equals(key))
+                    return new Color(255, 240, 240);
+                if ("buttonBackground".equals(key))
+                    return new Color(255, 100, 100);
+                if ("buttonText".equals(key))
+                    return Color.WHITE;
+                if ("generalText".equals(key))
+                    return new Color(255, 240, 240);
                 break;
             case "Twilight":
-                if ("bgMain".equals(key)) return new Color(20, 15, 40); // Dark Purple/Blue
-                if ("accent".equals(key)) return new Color(138, 43, 226); // Blue Violet
-                if ("textPrimary".equals(key)) return new Color(240, 230, 255); // Lavender
-                if ("textSecondary".equals(key)) return new Color(180, 160, 200);
-                if ("cardText".equals(key)) return new Color(30, 10, 40); // Deep Purple
-                if ("inputBackground".equals(key)) return new Color(250, 245, 255);
-                if ("inputText".equals(key)) return new Color(30, 10, 40);
-                if ("buttonBackground".equals(key)) return new Color(140, 80, 200); // Purple Button
-                if ("buttonText".equals(key)) return Color.WHITE;
-                if ("generalText".equals(key)) return Color.WHITE;
-                if ("cardIcon".equals(key)) return new Color(60, 30, 80); // Deep Purple for icons on light card
-                if ("cardIconHover".equals(key)) return new Color(100, 60, 140); // Lighter Purple on hover
+                if ("bgMain".equals(key))
+                    return new Color(20, 15, 40); // Dark Purple/Blue
+                if ("accent".equals(key))
+                    return new Color(138, 43, 226); // Blue Violet
+                if ("textPrimary".equals(key))
+                    return new Color(240, 230, 255); // Lavender
+                if ("textSecondary".equals(key))
+                    return new Color(180, 160, 200);
+                if ("cardText".equals(key))
+                    return new Color(30, 10, 40); // Deep Purple
+                if ("inputBackground".equals(key))
+                    return new Color(250, 245, 255);
+                if ("inputText".equals(key))
+                    return new Color(30, 10, 40);
+                if ("buttonBackground".equals(key))
+                    return new Color(140, 80, 200); // Purple Button
+                if ("buttonText".equals(key))
+                    return Color.WHITE;
+                if ("generalText".equals(key))
+                    return Color.WHITE;
+                if ("cardIcon".equals(key))
+                    return new Color(60, 30, 80); // Deep Purple for icons on light card
+                if ("cardIconHover".equals(key))
+                    return new Color(100, 60, 140); // Lighter Purple on hover
                 break;
             case "Neon Night":
-                if ("bgMain".equals(key)) return new Color(5, 5, 5);
-                if ("accent".equals(key)) return new Color(0, 255, 0);
-                if ("textPrimary".equals(key)) return new Color(0, 255, 0);
-                if ("textSecondary".equals(key)) return new Color(0, 150, 0);
-                if ("cardText".equals(key)) return new Color(0, 255, 0);
-                if ("inputBackground".equals(key)) return new Color(20, 20, 20);
-                if ("inputText".equals(key)) return new Color(0, 255, 0);
-                if ("buttonBackground".equals(key)) return new Color(0, 255, 0);
-                if ("buttonText".equals(key)) return Color.BLACK;
-                if ("generalText".equals(key)) return new Color(0, 255, 0);
+                if ("bgMain".equals(key))
+                    return new Color(5, 5, 5);
+                if ("accent".equals(key))
+                    return new Color(0, 255, 0);
+                if ("textPrimary".equals(key))
+                    return new Color(0, 255, 0);
+                if ("textSecondary".equals(key))
+                    return new Color(0, 150, 0);
+                if ("cardText".equals(key))
+                    return new Color(0, 255, 0);
+                if ("inputBackground".equals(key))
+                    return new Color(20, 20, 20);
+                if ("inputText".equals(key))
+                    return new Color(0, 255, 0);
+                if ("buttonBackground".equals(key))
+                    return new Color(0, 255, 0);
+                if ("buttonText".equals(key))
+                    return Color.BLACK;
+                if ("generalText".equals(key))
+                    return new Color(0, 255, 0);
                 break;
             case "Paper White":
-                if ("bgMain".equals(key)) return new Color(245, 245, 245);
-                if ("accent".equals(key)) return new Color(50, 50, 50);
-                if ("textPrimary".equals(key)) return new Color(20, 20, 20);
-                if ("textSecondary".equals(key)) return new Color(80, 80, 80);
-                if ("cardText".equals(key)) return new Color(20, 20, 20);
-                if ("inputBackground".equals(key)) return Color.WHITE;
-                if ("inputText".equals(key)) return Color.BLACK;
-                if ("buttonBackground".equals(key)) return new Color(220, 220, 220);
-                if ("buttonText".equals(key)) return Color.BLACK;
-                if ("generalText".equals(key)) return Color.BLACK;
+                if ("bgMain".equals(key))
+                    return new Color(245, 245, 245);
+                if ("accent".equals(key))
+                    return new Color(50, 50, 50);
+                if ("textPrimary".equals(key))
+                    return new Color(20, 20, 20);
+                if ("textSecondary".equals(key))
+                    return new Color(80, 80, 80);
+                if ("cardText".equals(key))
+                    return new Color(20, 20, 20);
+                if ("inputBackground".equals(key))
+                    return Color.WHITE;
+                if ("inputText".equals(key))
+                    return Color.BLACK;
+                if ("buttonBackground".equals(key))
+                    return new Color(220, 220, 220);
+                if ("buttonText".equals(key))
+                    return Color.BLACK;
+                if ("generalText".equals(key))
+                    return Color.BLACK;
                 break;
             case "Soft Mint":
-                if ("bgMain".equals(key)) return new Color(224, 242, 241);
-                if ("accent".equals(key)) return new Color(0, 150, 136);
-                if ("textPrimary".equals(key)) return new Color(0, 77, 64);
-                if ("textSecondary".equals(key)) return new Color(0, 121, 107);
-                if ("cardText".equals(key)) return new Color(0, 77, 64);
-                if ("inputBackground".equals(key)) return new Color(250, 255, 255);
-                if ("inputText".equals(key)) return new Color(0, 77, 64);
-                if ("buttonBackground".equals(key)) return new Color(178, 223, 219);
-                if ("buttonText".equals(key)) return new Color(0, 77, 64);
-                if ("generalText".equals(key)) return new Color(0, 77, 64);
+                if ("bgMain".equals(key))
+                    return new Color(224, 242, 241);
+                if ("accent".equals(key))
+                    return new Color(0, 150, 136);
+                if ("textPrimary".equals(key))
+                    return new Color(0, 77, 64);
+                if ("textSecondary".equals(key))
+                    return new Color(0, 121, 107);
+                if ("cardText".equals(key))
+                    return new Color(0, 77, 64);
+                if ("inputBackground".equals(key))
+                    return new Color(250, 255, 255);
+                if ("inputText".equals(key))
+                    return new Color(0, 77, 64);
+                if ("buttonBackground".equals(key))
+                    return new Color(178, 223, 219);
+                if ("buttonText".equals(key))
+                    return new Color(0, 77, 64);
+                if ("generalText".equals(key))
+                    return new Color(0, 77, 64);
                 break;
             case "Lavender Mist":
-                if ("bgMain".equals(key)) return new Color(243, 229, 245);
-                if ("accent".equals(key)) return new Color(156, 39, 176);
-                if ("textPrimary".equals(key)) return new Color(74, 20, 140);
-                if ("textSecondary".equals(key)) return new Color(106, 27, 154);
-                if ("cardText".equals(key)) return new Color(74, 20, 140);
-                if ("inputBackground".equals(key)) return new Color(255, 250, 255);
-                if ("inputText".equals(key)) return new Color(74, 20, 140);
-                if ("buttonBackground".equals(key)) return new Color(225, 190, 231);
-                if ("buttonText".equals(key)) return new Color(74, 20, 140);
-                if ("generalText".equals(key)) return new Color(74, 20, 140);
+                if ("bgMain".equals(key))
+                    return new Color(243, 229, 245);
+                if ("accent".equals(key))
+                    return new Color(156, 39, 176);
+                if ("textPrimary".equals(key))
+                    return new Color(74, 20, 140);
+                if ("textSecondary".equals(key))
+                    return new Color(106, 27, 154);
+                if ("cardText".equals(key))
+                    return new Color(74, 20, 140);
+                if ("inputBackground".equals(key))
+                    return new Color(255, 250, 255);
+                if ("inputText".equals(key))
+                    return new Color(74, 20, 140);
+                if ("buttonBackground".equals(key))
+                    return new Color(225, 190, 231);
+                if ("buttonText".equals(key))
+                    return new Color(74, 20, 140);
+                if ("generalText".equals(key))
+                    return new Color(74, 20, 140);
                 break;
             default: // Dark
-                if ("bgMain".equals(key)) return new Color(18, 18, 20);
-                if ("accent".equals(key)) return new Color(60, 120, 255);
-                if ("textPrimary".equals(key)) return Color.WHITE;
-                if ("textSecondary".equals(key)) return new Color(180, 180, 190);
-                if ("cardText".equals(key)) return Color.WHITE;
-                if ("inputBackground".equals(key)) return new Color(45, 45, 52);
-                if ("inputText".equals(key)) return Color.WHITE;
-                if ("buttonBackground".equals(key)) return new Color(60, 120, 255);
-                if ("buttonText".equals(key)) return Color.WHITE;
-                if ("generalText".equals(key)) return Color.WHITE;
+                if ("bgMain".equals(key))
+                    return new Color(18, 18, 20);
+                if ("accent".equals(key))
+                    return new Color(60, 120, 255);
+                if ("textPrimary".equals(key))
+                    return Color.WHITE;
+                if ("textSecondary".equals(key))
+                    return new Color(180, 180, 190);
+                if ("cardText".equals(key))
+                    return Color.WHITE;
+                if ("inputBackground".equals(key))
+                    return new Color(45, 45, 52);
+                if ("inputText".equals(key))
+                    return Color.WHITE;
+                if ("buttonBackground".equals(key))
+                    return new Color(60, 120, 255);
+                if ("buttonText".equals(key))
+                    return Color.WHITE;
+                if ("generalText".equals(key))
+                    return Color.WHITE;
                 break;
         }
 
-        if ("cardIcon".equals(key)) return getThemeColor("textSecondary");
-        if ("cardIconHover".equals(key)) return getThemeColor("textPrimary");
+        if ("cardIcon".equals(key))
+            return getThemeColor("textSecondary");
+        if ("cardIconHover".equals(key))
+            return getThemeColor("textPrimary");
 
         return Color.WHITE;
     }
@@ -3117,14 +3325,14 @@ public class App extends JFrame {
         // Set Global Accent for FlatLaf
         UIManager.put("Component.accentColor", accent);
         UIManager.put("Component.focusColor", focusBorder);
-        UIManager.put("Component.borderColor", new Color(0,0,0,0));
+        UIManager.put("Component.borderColor", new Color(0, 0, 0, 0));
 
         // Popup Menu & Popups
         UIManager.put("PopupMenu.background", inputBg);
         UIManager.put("PopupMenu.foreground", inputText);
-        UIManager.put("PopupMenu.borderColor", new Color(0,0,0,0));
+        UIManager.put("PopupMenu.borderColor", new Color(0, 0, 0, 0));
         UIManager.put("PopupMenu.border", BorderFactory.createEmptyBorder());
-        UIManager.put("Popup.borderColor", new Color(0,0,0,0)); // Critical for FlatLaf popups
+        UIManager.put("Popup.borderColor", new Color(0, 0, 0, 0)); // Critical for FlatLaf popups
         UIManager.put("Popup.border", BorderFactory.createEmptyBorder());
         UIManager.put("Popup.background", inputBg);
 
@@ -3134,7 +3342,7 @@ public class App extends JFrame {
         UIManager.put("MenuItem.selectionBackground", selectionBg);
         UIManager.put("MenuItem.selectionForeground", selectionFg);
         UIManager.put("MenuItem.border", new EmptyBorder(5, 10, 5, 10)); // Add padding
-        
+
         // Menu (Submenus)
         UIManager.put("Menu.background", inputBg);
         UIManager.put("Menu.foreground", inputText);
@@ -3142,28 +3350,28 @@ public class App extends JFrame {
         UIManager.put("Menu.selectionForeground", selectionFg);
         UIManager.put("Menu.border", new EmptyBorder(5, 10, 5, 10)); // Add padding & fix alignment
         UIManager.put("Menu.margin", new Insets(0, 0, 0, 0)); // Reset margin to let border handle spacing
-        
+
         // ComboBox & List (Dropdowns)
         UIManager.put("ComboBox.selectionBackground", selectionBg);
         UIManager.put("ComboBox.selectionForeground", selectionFg);
         UIManager.put("ComboBox.background", inputBg);
         UIManager.put("ComboBox.foreground", inputText);
         UIManager.put("ComboBox.popupBackground", inputBg);
-        UIManager.put("ComboBox.popupBorderColor", new Color(0,0,0,0)); // Explicit popup border
+        UIManager.put("ComboBox.popupBorderColor", new Color(0, 0, 0, 0)); // Explicit popup border
         UIManager.put("ComboBox.popupBorder", BorderFactory.createEmptyBorder());
         UIManager.put("ComboPopup.border", BorderFactory.createEmptyBorder());
-        UIManager.put("ComboBox.borderColor", new Color(0,0,0,0));
+        UIManager.put("ComboBox.borderColor", new Color(0, 0, 0, 0));
         UIManager.put("ComboBox.focusedBorderColor", focusBorder);
         UIManager.put("ComboBox.hoverBorderColor", inputText);
         UIManager.put("ComboBox.buttonArrowColor", textSecondary);
         UIManager.put("ComboBox.buttonEditableBackground", inputBg);
         UIManager.put("ComboBox.buttonBackground", inputBg);
-        
+
         UIManager.put("List.background", inputBg);
         UIManager.put("List.foreground", inputText);
         UIManager.put("List.selectionBackground", selectionBg);
         UIManager.put("List.selectionForeground", selectionFg);
-        
+
         // CheckBox & RadioButton Menu Items
         UIManager.put("CheckBoxMenuItem.background", inputBg);
         UIManager.put("CheckBoxMenuItem.foreground", inputText);
@@ -3174,7 +3382,7 @@ public class App extends JFrame {
         UIManager.put("RadioButtonMenuItem.foreground", inputText);
         UIManager.put("RadioButtonMenuItem.selectionBackground", selectionBg);
         UIManager.put("RadioButtonMenuItem.selectionForeground", selectionFg);
-        
+
         // Separator
         UIManager.put("PopupMenu.separatorColor", textSecondary);
     }
@@ -3191,57 +3399,57 @@ public class App extends JFrame {
         updateFormatter();
         Color bgMain = getThemeColor("bgMain");
         getContentPane().setBackground(bgMain);
-        
+
         if (searchPanel != null) {
             searchPanel.setBackground(getThemeColor("inputBackground"));
         }
 
         updateThemeUIManager();
         SwingUtilities.updateComponentTreeUI(this);
-        
+
         // Update header components
         titleLabel.setForeground(getThemeColor("textPrimary"));
-        
+
         searchField.setBackground(getThemeColor("inputBackground"));
         searchField.setForeground(getThemeColor("inputText"));
         searchField.setCaretColor(getThemeColor("inputText"));
         searchField.setBorder(new EmptyBorder(5, 10, 5, 10));
-        
+
         searchIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("inputText")));
         trashIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
         settingsIcon.setColorFilter(new FlatSVGIcon.ColorFilter(color -> getThemeColor("textSecondary")));
-        
+
         // Recreate Search Scope Combo to fix theme issues
         if (searchScopeCombo != null && searchScopeCombo.getParent() != null) {
             Container parent = searchScopeCombo.getParent();
             String selected = (String) searchScopeCombo.getSelectedItem();
             parent.remove(searchScopeCombo);
-            
+
             searchScopeCombo = createStyledComboBox(new String[] { "Current Tab", "All Tabs" }, selected);
             searchScopeCombo.setPreferredSize(new Dimension(120, 35));
             searchScopeCombo.addActionListener(e -> refreshUI());
-            
+
             parent.add(searchScopeCombo, BorderLayout.EAST);
             parent.revalidate();
             parent.repaint();
         } else {
-             searchScopeCombo.setBackground(getThemeColor("inputBackground"));
-             searchScopeCombo.setForeground(getThemeColor("inputText"));
-             searchScopeCombo.setBorder(new EmptyBorder(5, 10, 5, 10));
+            searchScopeCombo.setBackground(getThemeColor("inputBackground"));
+            searchScopeCombo.setForeground(getThemeColor("inputText"));
+            searchScopeCombo.setBorder(new EmptyBorder(5, 10, 5, 10));
         }
-        
+
         // Force recreation of all cards to apply new theme colors/fonts
         cardMap.clear();
         contentPanel.removeAll();
-        
+
         // Repaint tabs panel to update highlight color
         if (tabsPanel != null) {
             tabsPanel.repaint();
         }
-        
+
         refreshTabsUI();
         refreshUI();
-        
+
         validate();
         repaint();
     }
@@ -3255,16 +3463,17 @@ public class App extends JFrame {
         preview.setFocusable(false);
         preview.setMargin(new Insets(0, 0, 0, 0));
         preview.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        
+
         if (item.getCaption() != null && !item.getCaption().isEmpty()) {
             preview.setToolTipText(item.getCaption());
         }
-        
+
         if (item.getType() == ClipboardItem.Type.URL) {
             preview.setForeground(getThemeColor("accent"));
             Map<TextAttribute, Object> attributes = new HashMap<>();
             attributes.put(TextAttribute.UNDERLINE, TextAttribute.UNDERLINE_ON);
-            preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2).deriveFont(attributes));
+            preview.setFont(
+                    getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2).deriveFont(attributes));
         } else {
             preview.setForeground(getThemeColor("cardText"));
             preview.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, configManager.getFontSize() + 2));
@@ -3275,14 +3484,33 @@ public class App extends JFrame {
         if (text.length() > maxChars)
             text = text.substring(0, maxChars - 3) + "...";
         preview.setText(text.replace("\n", " "));
-        
+
         // Forward mouse events to the card
         MouseAdapter ma = new MouseAdapter() {
-            @Override public void mouseClicked(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mousePressed(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mouseReleased(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mouseEntered(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
-            @Override public void mouseExited(MouseEvent e) { card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card)); }
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                card.dispatchEvent(SwingUtilities.convertMouseEvent(preview, e, card));
+            }
         };
         preview.addMouseListener(ma);
         return preview;
@@ -3295,7 +3523,7 @@ public class App extends JFrame {
         private float feedbackProgress = -1.0f;
         private Timer pulseTimer;
         private Timer resetTimer;
-        
+
         private Rectangle targetBounds;
         private float currentX, currentY, currentW, currentH;
 
@@ -3303,48 +3531,53 @@ public class App extends JFrame {
             super(layout);
             setOpaque(false);
         }
-        
+
         public void setTargetBounds(int x, int y, int width, int height) {
-             if (targetBounds == null) {
-                 // First time initialization
-                 currentX = x;
-                 currentY = y;
-                 currentW = width;
-                 currentH = height;
-                 setBounds(x, y, width, height);
-             }
-             this.targetBounds = new Rectangle(x, y, width, height);
+            if (targetBounds == null) {
+                // First time initialization
+                currentX = x;
+                currentY = y;
+                currentW = width;
+                currentH = height;
+                setBounds(x, y, width, height);
+            }
+            this.targetBounds = new Rectangle(x, y, width, height);
         }
 
         public boolean animateStep() {
-             if (targetBounds == null) return false;
-             
-             boolean changed = false;
-             float speed = 0.2f; // Animation speed
-             float threshold = 0.5f;
+            if (targetBounds == null)
+                return false;
 
-             if (Math.abs(targetBounds.x - currentX) > threshold) {
-                 currentX += (targetBounds.x - currentX) * speed;
-                 changed = true;
-             } else currentX = targetBounds.x;
+            boolean changed = false;
+            float speed = 0.2f; // Animation speed
+            float threshold = 0.5f;
 
-             if (Math.abs(targetBounds.y - currentY) > threshold) {
-                 currentY += (targetBounds.y - currentY) * speed;
-                 changed = true;
-             } else currentY = targetBounds.y;
-             
-             if (Math.abs(targetBounds.width - currentW) > threshold) {
-                 currentW += (targetBounds.width - currentW) * speed;
-                 changed = true;
-             } else currentW = targetBounds.width;
-             
-             if (Math.abs(targetBounds.height - currentH) > threshold) {
-                 currentH += (targetBounds.height - currentH) * speed;
-                 changed = true;
-             } else currentH = targetBounds.height;
-             
-             if (changed) {
-                super.setBounds((int)currentX, (int)currentY, (int)currentW, (int)currentH);
+            if (Math.abs(targetBounds.x - currentX) > threshold) {
+                currentX += (targetBounds.x - currentX) * speed;
+                changed = true;
+            } else
+                currentX = targetBounds.x;
+
+            if (Math.abs(targetBounds.y - currentY) > threshold) {
+                currentY += (targetBounds.y - currentY) * speed;
+                changed = true;
+            } else
+                currentY = targetBounds.y;
+
+            if (Math.abs(targetBounds.width - currentW) > threshold) {
+                currentW += (targetBounds.width - currentW) * speed;
+                changed = true;
+            } else
+                currentW = targetBounds.width;
+
+            if (Math.abs(targetBounds.height - currentH) > threshold) {
+                currentH += (targetBounds.height - currentH) * speed;
+                changed = true;
+            } else
+                currentH = targetBounds.height;
+
+            if (changed) {
+                super.setBounds((int) currentX, (int) currentY, (int) currentW, (int) currentH);
                 revalidate();
                 doLayout(); // Force immediate layout for children alignment
             } else {
@@ -3467,7 +3700,8 @@ public class App extends JFrame {
                     // Subtle glow effect
                     Color glowColor = new Color(180, 80, 220); // Violet/Magenta
                     for (int i = 0; i < 4; i++) {
-                        g2.setColor(new Color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), 60 - (i * 10)));
+                        g2.setColor(new Color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(),
+                                60 - (i * 10)));
                         g2.setStroke(new BasicStroke(6 - i));
                         g2.drawRect(1, 1, w - 3, h - 3);
                     }
@@ -3520,20 +3754,23 @@ public class App extends JFrame {
                 try (FileOutputStream fos = new FileOutputStream(tempFile)) {
                     fos.write(svgBytes);
                 }
-                
+
                 FlatSVGIcon svgIcon = new FlatSVGIcon(tempFile);
                 int w = svgIcon.getIconWidth();
                 int h = svgIcon.getIconHeight();
-                
+
                 // If dimensions are too small or invalid, pick a reasonable default
-                if (w <= 0 || h <= 0) { w = 500; h = 500; }
-                
+                if (w <= 0 || h <= 0) {
+                    w = 500;
+                    h = 500;
+                }
+
                 // Render to BufferedImage
                 image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
                 Graphics2D g2 = image.createGraphics();
                 svgIcon.paintIcon(new JLabel(), g2, 0, 0);
                 g2.dispose();
-                
+
             } catch (Throwable e) {
                 // If rendering fails, fallback to text
                 image = null;
@@ -3574,8 +3811,9 @@ public class App extends JFrame {
 
         } else if (item.getType() == ClipboardItem.Type.IMAGE || item.getType() == ClipboardItem.Type.GIF) {
             BufferedImage image = item.getAsImage();
-            if (image == null) return;
-            
+            if (image == null)
+                return;
+
             final BufferedImage finalImage = image;
             Transferable imageTransferable = new Transferable() {
                 @Override
@@ -3601,11 +3839,12 @@ public class App extends JFrame {
     }
 
     private void openBrowser(String url) {
-        if (url == null || url.isBlank()) return;
-        
+        if (url == null || url.isBlank())
+            return;
+
         // Ensure protocol
         String finalUrl = url.toLowerCase().startsWith("http") ? url : "http://" + url;
-        
+
         String browser = configManager.getBrowser();
         boolean incognito = configManager.isIncognito();
 
