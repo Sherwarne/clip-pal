@@ -61,8 +61,12 @@ public class OllamaService {
                     String jsonBody = String.format(
                         "{" +
                         "\"model\": \"%s\"," +
-                        "\"prompt\": \"Generate a very short, concise caption (max 10-15 words) for the following text. Do not use quotes. Text: %s\"," +
-                        "\"stream\": false" +
+                        "\"prompt\": \"Generate a very short, concise caption (max 10 words) for the following text. Do not use quotes. Text: %s\"," +
+                        "\"stream\": false," +
+                        "\"options\": {" +
+                        "\"num_predict\": 20," +
+                        "\"temperature\": 0.2" +
+                        "}" +
                         "}", model, escapedText);
 
                     HttpRequest request = HttpRequest.newBuilder()

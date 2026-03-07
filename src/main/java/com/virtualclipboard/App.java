@@ -1460,24 +1460,24 @@ public class App extends JFrame {
                     // Trigger AI generation for missing captions
                     if (configManager.isAiCaptionEnabled()) {
                         System.out.println("Checking for missing captions...");
-                        int missingCount = 0;
+                        List<ClipboardItem> missingCaptions = new ArrayList<>();
                         for (ClipboardTab tab : tabs) {
                             for (ClipboardItem item : tab.items) {
                                 if (item.getType() == ClipboardItem.Type.TEXT && item.getCaption() == null) {
-                                    missingCount++;
-                                    ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
-                                        if (caption != null && !caption.isEmpty()) {
-                                            item.setCaption(caption);
-                                            SwingUtilities.invokeLater(() -> {
-                                                refreshUI();
-                                                saveClipboardState();
-                                            });
-                                        }
-                                    });
+                                    missingCaptions.add(item);
                                 }
                             }
                         }
-                        System.out.println("Found " + missingCount + " items missing captions.");
+
+                        // Sort by text length (shortest to longest)
+                        missingCaptions.sort((a, b) -> Integer.compare(
+                                a.getText() != null ? a.getText().length() : 0,
+                                b.getText() != null ? b.getText().length() : 0));
+
+                        triggerBulkCaptionGeneration(missingCaptions, null, () -> {
+                            System.out.println("Bulk caption generation completed on startup.");
+                        });
+                        System.out.println("Found " + missingCaptions.size() + " items missing captions.");
                     }
                 }
             }
@@ -2179,10 +2179,6 @@ public class App extends JFrame {
             }
         }
 
-        if (item.getCaption() != null && !item.getCaption().isEmpty()) {
-            // Caption handled separately below to allow wrapping
-        }
-
         for (String[] detail : details) {
             JLabel key = new JLabel(detail[0]);
             key.setForeground(getThemeColor("textSecondary"));
@@ -2201,31 +2197,35 @@ public class App extends JFrame {
         topContainer.setOpaque(false);
         topContainer.add(metaPanel);
 
-        if (item.getCaption() != null && !item.getCaption().isEmpty()) {
-            JPanel captionPanel = new JPanel(new BorderLayout(10, 5));
-            captionPanel.setOpaque(false);
-            captionPanel.setBorder(new EmptyBorder(10, 0, 0, 0)); // Top margin
+        // Caption Section (Always visible and editable)
+        JPanel captionPanel = new JPanel(new BorderLayout(10, 5));
+        captionPanel.setOpaque(false);
+        captionPanel.setBorder(new EmptyBorder(15, 0, 0, 0)); // Top margin
 
-            JLabel captionTitle = new JLabel("AI Caption");
-            captionTitle.setForeground(getThemeColor("textSecondary"));
-            captionTitle.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
+        JLabel captionTitle = new JLabel("Caption");
+        captionTitle.setForeground(getThemeColor("textSecondary"));
+        captionTitle.setFont(getAppFont(FONT_FAMILY_TEXT, Font.BOLD, 14));
 
-            JTextArea captionText = new JTextArea(item.getCaption());
-            captionText.setLineWrap(true);
-            captionText.setWrapStyleWord(true);
-            captionText.setEditable(false);
-            captionText.setOpaque(false);
-            captionText.setForeground(getThemeColor("generalText"));
-            captionText.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
-            // Important: set columns to limit preferred width calculation
-            captionText.setColumns(40);
-            captionText.setBorder(BorderFactory.createEmptyBorder());
+        JTextArea captionText = new JTextArea(item.getCaption() != null ? item.getCaption() : "");
+        captionText.setLineWrap(true);
+        captionText.setWrapStyleWord(true);
+        captionText.setEditable(true);
+        captionText.setBackground(getThemeColor("inputBackground"));
+        captionText.setForeground(getThemeColor("inputText"));
+        captionText.setCaretColor(getThemeColor("inputText"));
+        captionText.setFont(getAppFont(FONT_FAMILY_TEXT, Font.PLAIN, 14));
+        captionText.setColumns(40);
+        captionText.setRows(2);
+        captionText.setBorder(new EmptyBorder(5, 5, 5, 5));
 
-            captionPanel.add(captionTitle, BorderLayout.NORTH);
-            captionPanel.add(captionText, BorderLayout.CENTER);
+        JScrollPane captionScroll = new JScrollPane(captionText);
+        captionScroll.setBorder(new LineBorder(getThemeColor("textSecondary")));
+        captionScroll.setPreferredSize(new Dimension(500, 60));
 
-            topContainer.add(captionPanel);
-        }
+        captionPanel.add(captionTitle, BorderLayout.NORTH);
+        captionPanel.add(captionScroll, BorderLayout.CENTER);
+
+        topContainer.add(captionPanel);
 
         mainPanel.add(topContainer, BorderLayout.NORTH);
 
@@ -2304,11 +2304,12 @@ public class App extends JFrame {
                     ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
                         SwingUtilities.invokeLater(() -> {
                             if (caption != null && !caption.isEmpty()) {
+                                captionText.setText(caption);
                                 item.setCaption(caption);
                                 saveClipboardState();
                                 refreshUI();
-                                dialog.dispose();
-                                showInfoPopup(item); // Reopen to show new caption
+                                captionBtn.setText("Generate Caption");
+                                captionBtn.setEnabled(true);
                             } else {
                                 captionBtn.setText("Failed / Offline");
                                 Timer t = new Timer(2000, evt -> {
@@ -2547,7 +2548,12 @@ public class App extends JFrame {
         closeBtn.setForeground(getThemeColor("buttonText"));
         closeBtn.setFocusPainted(false);
         closeBtn.setBorder(new EmptyBorder(10, 20, 10, 20));
-        closeBtn.addActionListener(e -> dialog.dispose());
+        closeBtn.addActionListener(e -> {
+            item.setCaption(captionText.getText().trim());
+            saveClipboardState();
+            refreshUI();
+            dialog.dispose();
+        });
 
         JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         footer.setOpaque(false);
@@ -2855,11 +2861,17 @@ public class App extends JFrame {
                 for (ClipboardItem item : tab.items) {
                     if (item.getType() == ClipboardItem.Type.TEXT
                             && (item.getCaption() == null || item.getCaption().isEmpty())) {
-                        totalItems++;
                         itemsToProcess.add(item);
                     }
                 }
             }
+
+            // Sort by text length (shortest to longest)
+            itemsToProcess.sort((a, b) -> Integer.compare(
+                    a.getText() != null ? a.getText().length() : 0,
+                    b.getText() != null ? b.getText().length() : 0));
+
+            totalItems = itemsToProcess.size();
 
             if (totalItems == 0) {
                 generateAllBtn.setText("No items needed captions.");
@@ -2873,32 +2885,23 @@ public class App extends JFrame {
             }
 
             generateAllBtn.setText("Generating... (0/" + totalItems + ")");
-            AtomicInteger completedCount = new AtomicInteger(0);
             int finalTotal = totalItems;
 
-            for (ClipboardItem item : itemsToProcess) {
-                ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
-                    int current = completedCount.incrementAndGet();
-                    SwingUtilities.invokeLater(() -> {
-                        generateAllBtn.setText("Generating... (" + current + "/" + finalTotal + ")");
-                        if (caption != null && !caption.isEmpty()) {
-                            item.setCaption(caption);
-                            refreshUI();
-                            saveClipboardState();
-                        }
-
-                        if (current == finalTotal) {
-                            generateAllBtn.setText("Completed " + finalTotal + " items.");
-                            Timer t = new Timer(3000, evt -> {
-                                generateAllBtn.setText("Generate Captions for All Entries");
-                                generateAllBtn.setEnabled(true);
-                            });
-                            t.setRepeats(false);
-                            t.start();
-                        }
-                    });
+            triggerBulkCaptionGeneration(itemsToProcess, (current, total) -> {
+                SwingUtilities.invokeLater(() -> {
+                    generateAllBtn.setText("Generating... (" + current + "/" + total + ")");
                 });
-            }
+            }, () -> {
+                SwingUtilities.invokeLater(() -> {
+                    generateAllBtn.setText("Completed " + finalTotal + " items.");
+                    Timer t = new Timer(3000, evt -> {
+                        generateAllBtn.setText("Generate Captions for All Entries");
+                        generateAllBtn.setEnabled(true);
+                    });
+                    t.setRepeats(false);
+                    t.start();
+                });
+            });
         });
 
         contentPanel.add(generateAllBtn);
@@ -3392,6 +3395,61 @@ public class App extends JFrame {
             formatter = DateTimeFormatter.ofPattern("MMM dd, HH:mm:ss");
         } else {
             formatter = DateTimeFormatter.ofPattern("MMM dd, hh:mm:ss a");
+        }
+    }
+
+    /**
+     * Helper to process a list of items for caption generation in a controlled manner.
+     * Starts a few concurrent workers that process the items one by one.
+     */
+    private void triggerBulkCaptionGeneration(List<ClipboardItem> items,
+            java.util.function.BiConsumer<Integer, Integer> progressCallback, Runnable onComplete) {
+        if (items.isEmpty()) {
+            if (onComplete != null)
+                onComplete.run();
+            return;
+        }
+
+        AtomicInteger nextIndex = new AtomicInteger(0);
+        AtomicInteger completedCount = new AtomicInteger(0);
+        int total = items.size();
+
+        // Runnable that picks the next item and generates a caption for it
+        Runnable worker = new Runnable() {
+            @Override
+            public void run() {
+                int i = nextIndex.getAndIncrement();
+                if (i < total) {
+                    ClipboardItem item = items.get(i);
+                    ollamaService.generateCaption(item.getText()).thenAccept(caption -> {
+                        int currentCompleted = completedCount.incrementAndGet();
+
+                        if (caption != null && !caption.isEmpty()) {
+                            item.setCaption(caption);
+                            SwingUtilities.invokeLater(() -> refreshUI());
+                        }
+
+                        if (progressCallback != null) {
+                            progressCallback.accept(currentCompleted, total);
+                        }
+
+                        if (currentCompleted == total) {
+                            saveClipboardState(); // Final save after all work is done
+                            if (onComplete != null)
+                                onComplete.run();
+                        } else {
+                            // Continue with next item
+                            this.run();
+                        }
+                    });
+                }
+            }
+        };
+
+        // Start 2 concurrent workers
+        worker.run();
+        if (total > 1) {
+            worker.run();
         }
     }
 
